@@ -1,5 +1,4 @@
-#ifndef BOOST_THREAD_CONCURRENT_HASH_MAP_HPP__
-#define  BOOST_THREAD_CONCURRENT_HASH_MAP_HPP__
+#pragma once
 
 #include <boost/thread/synchronized_value.hpp>
 #include <boost/iterator/indirect_iterator.hpp>
@@ -509,5 +508,3 @@ private:
         }
     }
 };
-
-#endif
