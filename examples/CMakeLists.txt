@@ -1,0 +1,11 @@
+add_executable(orderbook orderbook.cpp)
+target_link_libraries(orderbook concurrent_hash_map)
+
+add_executable(user_session_cache user_session_cache.cpp)
+target_link_libraries(user_session_cache concurrent_hash_map)
+
+#add_executable(event_processor event_processor.cpp)
+#target_link_libraries(event_processor concurrent_hash_map)
+
+add_executable(stats stats.cpp)
+target_link_libraries(stats concurrent_hash_map)
