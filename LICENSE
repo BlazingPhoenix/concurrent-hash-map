@@ -1,10 +1,10 @@
 Concurrent hash map
 ===========
-STL compatible implementation of hash map optimized for concurrent access. For more details look to proposal [D0652R0](http://apolukhin.github.io/papers/Concurrent%20and%20unordered.html)
+STL compatible implementation of hash map optimized for concurrent access. For more details look to proposal D0652R0
 
 Usage example
 ===========
-```
+
 #include "concurrent_hash_map.hpp"
 #include <string>
 
@@ -12,7 +12,6 @@ std::concurrent_unordered_map<std::string, int> m;
 m.insert(std::make_pair("abc", 123));
 m.update("abc", 124);
 assert(*m.find("abc") == 124);
-```
 
 Licence
 ===========
