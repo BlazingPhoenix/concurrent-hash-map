@@ -885,6 +885,15 @@ namespace std {
                     return std::addressof(operator*());
                 }
 
+                const_reference operator*() const {
+                    return const_local_iterator::data->element(const_local_iterator::slot);
+                }
+
+                const_pointer operator->() const {
+                    return std::addressof(operator*());
+                }
+
+
                 local_iterator& operator++() {
                     const_local_iterator::operator++();
                     return *this;
@@ -925,55 +934,7 @@ namespace std {
                 friend class unsynchronized_view;
             };
 
-            template<typename bucket_iterator>
-            class base_iterator {
-            public:
-                void increment() {
-                    ++bucket_position;
-                    if (bucket_position == bucket_iterator::end(&((*buckets)[bucket_index]))) {
-                        ++bucket_position;
-                        while (bucket_index < buckets->size()) {
-                            bucket_position = bucket_iterator::begin(&((*buckets)[bucket_index]));
-                            if (bucket_position != bucket_iterator::end(&((*buckets)[bucket_index]))) {
-                                break;
-                            }
-                            ++bucket_index;
-                        }
-                    }
-                }
-
-                void decrement() {
-                    bucket_iterator begin = bucket_iterator::begin(&((*buckets)[bucket_index]));
-                    if (begin == bucket_position) {
-                        --bucket_index;
-                        while (bucket_iterator::begin(&((*buckets)[bucket_index])) ==
-                               bucket_iterator::end(&((*buckets)[bucket_index])))
-                        {
-                            --bucket_index;
-                        }
-                        bucket_position = bucket_iterator::end(&((*buckets)[bucket_index]));
-                        --bucket_position;
-                    } else {
-                        --bucket_position;
-                    }
-                }
-
-                bucket_iterator begin(bucket* bucket) {
-                    return bucket_iterator::begin(bucket);
-                }
-
-                bucket_iterator end(bucket* bucket) {
-                    return bucket_iterator::end(bucket);
-                }
-
-            private:
-                buckets_t* buckets;
-                size_type bucket_index;
-                bucket_iterator bucket_position;
-                friend class unsynchronized_view;
-            };
-
-            class const_iterator : protected base_iterator<const_local_iterator> {
+            class const_iterator {
             public:
                 using difference_type = unsynchronized_view::difference_type;
                 using value_type = unsynchronized_view::value_type;
@@ -982,10 +943,10 @@ namespace std {
                 using iterator_category = std::bidirectional_iterator_tag;
 
                 const_iterator() {}
-
+                              
                 bool operator==(const const_iterator& other) const {
                     return buckets == other.buckets && bucket_index == other.bucket_index &&
-                        (bucket_iterator == other.bucket_iterator || bucket_index == buckets->size());
+                        (bucket_position == other.bucket_position || bucket_index == buckets->size());
                 }
 
                 bool operator!=(const const_iterator& it) const {
@@ -993,26 +954,27 @@ namespace std {
                 }
 
                 reference operator*() const {
-                    return *bucket_iterator;
+                    return *bucket_position;
                 }
 
                 pointer operator->() const {
-                    return bucket_iterator.operator->();
+                    return bucket_position.operator->();
                 }
 
                 const_iterator& operator++() {
-                    base_iterator<const_local_iterator>::increment();
+                    increment();
                     return *this;
                 }
 
-                const_iterator& operator++(int) {
+                const_iterator operator++(int) {
                     const_iterator old(*this);
                     ++(*this);
                     return old;
                 }
 
                 const_iterator& operator--() {
-                    base_iterator<const_local_iterator>::decrement();
+                    decrement();
+                    return *this;
                 }
 
                 const_iterator operator--(int) {
@@ -1020,22 +982,61 @@ namespace std {
                     --(*this);
                     return old;
                 }
+                
+            protected:
+                void increment() {
+                    ++bucket_position;
+                    if (bucket_position == local_iterator::end(&((*buckets)[bucket_index]))) {
+                        ++bucket_position;
+                        while (bucket_index < buckets->size()) {
+                            bucket_position = local_iterator::begin(&((*buckets)[bucket_index]));
+                            if (bucket_position != local_iterator::end(&((*buckets)[bucket_index]))) {
+                                break;
+                            }
+                            ++bucket_index;
+                        }
+                    }
+                }
 
-            private:
+                void decrement() {
+                    const_local_iterator begin = local_iterator::begin(&((*buckets)[bucket_index]));
+                    if (begin == bucket_position) {
+                        --bucket_index;
+                        while (local_iterator::begin(&((*buckets)[bucket_index])) ==
+                               local_iterator::end(&((*buckets)[bucket_index])))
+                        {
+                            --bucket_index;
+                        }
+                        bucket_position = local_iterator::end(&((*buckets)[bucket_index]));
+                        --bucket_position;
+                    } else {
+                        --bucket_position;
+                    }
+                }
+
                 const_iterator(buckets_t* buckets, size_type bucket_index, size_type slot)
                     : buckets(buckets)
                     , bucket_index(bucket_index)
-                    , bucket_iterator(&(*buckets)[bucket_index != buckets->size() ? bucket_index : 0],
+                    , bucket_position(&(*buckets)[bucket_index != buckets->size() ? bucket_index : 0],
                                       slot)
                     {
                     }
+                
+                const_local_iterator begin(bucket* bucket) {
+                    return const_local_iterator::begin(bucket);
+                }
+
+                const_local_iterator end(bucket* bucket) {
+                    return const_local_iterator::end(bucket);
+                }
+
                 buckets_t* buckets;
                 size_type bucket_index;
-                const_local_iterator bucket_iterator;
+                local_iterator bucket_position;
                 friend class unsynchronized_view;
             };
 
-            class iterator : public base_iterator<local_iterator> {
+            class iterator : public const_iterator {
             public:
                 using difference_type = unsynchronized_view::difference_type;
                 using value_type = unsynchronized_view::value_type;
@@ -1048,25 +1049,25 @@ namespace std {
                 iterator() {}
 
                 bool operator==(const iterator& other) const {
-                    return buckets == other.buckets && bucket_index == other.bucket_index &&
-                        (bucket_iterator == other.bucket_iterator || bucket_index == buckets->size());
+                    return this->buckets == other.buckets && this->bucket_index == other.bucket_index &&
+                        (this->bucket_position == other.bucket_position || this->bucket_index == this->buckets->size());
                 }
                 bool operator!=(const iterator& it) const {
                     return !operator==(it);
                 }
 
                 const_reference operator*() const {
-                    return *bucket_iterator;
+                    return *this->bucket_position;
                 }
                 reference operator*() {
-                    return *bucket_iterator;
+                    return *this->bucket_position;
                 }
 
                 const_pointer operator->() const {
-                    return bucket_iterator.operator->();
+                    return this->bucket_position.operator->();
                 }
                 pointer operator->() {
-                    return bucket_iterator.operator->();
+                    return this->bucket_position.operator->();
                 }
 
                 iterator operator++() {
@@ -1075,7 +1076,7 @@ namespace std {
                     return old;
                 }
                 iterator& operator++(int) {
-                    base_iterator<local_iterator>::increment();
+                    const_iterator::increment();
                     return *this;
                 }
 
@@ -1085,21 +1086,24 @@ namespace std {
                     return old;
                 }
                 iterator& operator--(int) {
-                    base_iterator<local_iterator>::decrement();
+                    const_iterator::decrement();
                     return *this;
                 }
 
             private:
                 iterator(buckets_t* buckets, size_type bucket_index, size_type slot)
-                    : buckets(buckets)
-                    , bucket_index(bucket_index)
-                    , bucket_iterator(&((*buckets)[bucket_index != buckets->size() ? bucket_index : 0]), slot)
+                    : const_iterator(buckets, bucket_index, slot)
                     {
                     }
+                
+                local_iterator begin(bucket* bucket) {
+                    return local_iterator::begin(bucket);
+                }
 
-                buckets_t* buckets;
-                size_type bucket_index;
-                local_iterator bucket_iterator;
+                local_iterator end(bucket* bucket) {
+                    return local_iterator::end(bucket);
+                }
+
                 friend class unsynchronized_view;
             };
 
