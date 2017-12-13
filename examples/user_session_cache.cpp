@@ -1,9 +1,11 @@
 #include <concurrent_hash_map/concurrent_hash_map.hpp>
 
 #include <map>
+#include <experimental/string_view>
 #include <iostream>
 
 using namespace std;
+using std::experimental::string_view;
 
 struct user_t {
     string name;

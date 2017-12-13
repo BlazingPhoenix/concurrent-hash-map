@@ -1,3 +1,5 @@
+#pragma once
+
 #include <utility>
 #include <functional>
 #include <memory>
@@ -15,11 +17,11 @@
 
 namespace std {
     namespace private_impl {
-        constexpr const std::size_t DEFAULT_SLOTS_PER_BUCKET = 4;
-        constexpr const std::size_t DEFAULT_SIZE = (1U << 16) * DEFAULT_SLOTS_PER_BUCKET;
-        constexpr const std::size_t LOCK_ARRAY_GRANULARITY = 0;
-        constexpr const double DEFAULT_MINIMUM_LOAD_FACTOR = 0.05;
-        constexpr const std::size_t NO_MAXIMUM_HASHPOWER = std::numeric_limits<size_t>::max();
+        static constexpr const std::size_t DEFAULT_SLOTS_PER_BUCKET = 4;
+        static constexpr const std::size_t DEFAULT_SIZE = (1U << 16) * DEFAULT_SLOTS_PER_BUCKET;
+        static constexpr const std::size_t LOCK_ARRAY_GRANULARITY = 0;
+        static constexpr const double DEFAULT_MINIMUM_LOAD_FACTOR = 0.05;
+        static constexpr const std::size_t NO_MAXIMUM_HASHPOWER = std::numeric_limits<size_t>::max();
 
         using size_type = std::size_t;
         using partial_t = uint8_t;
@@ -77,8 +79,8 @@ namespace std {
                 const key_type& key(size_type index) const {
                     return element(index).first;
                 }
-                const key_type&& movable_key(size_type index) {
-                    return std::move(element(index).first);
+                key_type&& movable_key(size_type index) {
+                    return std::move(const_cast<key_type&>(element(index).first));
                 }
 
                 const mapped_type& mapped(size_type index) const {
@@ -213,8 +215,8 @@ namespace std {
             }
 
             template <typename K, typename... Args>
-            void set_element(size_type index, size_type slot, partial_t partial_key, K &&k,
-                             Args &&... args) {
+            void set_element(size_type index, size_type slot, partial_t partial_key, K&& k,
+                             Args&&... args) {
                 bucket& b = buckets[index];
                 assert(!b.occupied(slot));
                 b.partial(slot) = partial_key;
@@ -238,7 +240,8 @@ namespace std {
                 bucket& src = buckets[src_index];
                 assert(src.occupied(src_slot));
                 assert(!dst.occupied(dst_slot));
-                set_element(dst_index, dst_slot, src.partial(src_slot), src.movable_key(src_slot),
+                set_element(dst_index, dst_slot, src.partial(src_slot),
+                            src.movable_key(src_slot),
                             std::move(src.mapped(src_slot)));
                 erase_element(src_index, src_slot);
             }
@@ -967,6 +970,7 @@ namespace std {
                 buckets_t* buckets;
                 size_type bucket_index;
                 bucket_iterator bucket_position;
+                friend class unsynchronized_view;
             };
 
             class const_iterator : protected base_iterator<const_local_iterator> {
@@ -1021,10 +1025,10 @@ namespace std {
                 const_iterator(buckets_t* buckets, size_type bucket_index, size_type slot)
                     : buckets(buckets)
                     , bucket_index(bucket_index)
-                    , bucket_iterator(buckets[bucket_index != buckets->size() ? bucket_index : 0], slot)
+                    , bucket_iterator(&(*buckets)[bucket_index != buckets->size() ? bucket_index : 0],
+                                      slot)
                     {
                     }
-
                 buckets_t* buckets;
                 size_type bucket_index;
                 const_local_iterator bucket_iterator;
@@ -1065,22 +1069,24 @@ namespace std {
                     return bucket_iterator.operator->();
                 }
 
-                iterator& operator++() {
-                    base_iterator<local_iterator>::increment();
-                }
-                iterator& operator++(int) {
+                iterator operator++() {
                     iterator old(*this);
                     ++(*this);
                     return old;
                 }
-
-                iterator& operator--() {
-                    base_iterator<local_iterator>::decrement();
+                iterator& operator++(int) {
+                    base_iterator<local_iterator>::increment();
+                    return *this;
                 }
-                iterator operator--(int) {
+
+                iterator operator--() {
                     iterator old(*this);
                     --(*this);
                     return old;
+                }
+                iterator& operator--(int) {
+                    base_iterator<local_iterator>::decrement();
+                    return *this;
                 }
 
             private:
@@ -1156,7 +1162,7 @@ namespace std {
                 } else {
                     assert(pos.status == failure_key_duplicated);
                 }
-                return std::make_pair(iterator(delegate.buckets, pos.index, pos.slot),
+                return std::make_pair(iterator(&delegate.buckets, pos.index, pos.slot),
                                       pos.status == ok);
             }
             pair<iterator, bool> insert(const value_type&& x) {
@@ -1176,6 +1182,12 @@ namespace std {
             void insert(initializer_list<value_type> il) {
                 for (auto pos = il.begin(); pos != il.end(); ++pos)  {
                     insert(*pos);
+                }
+            }
+            template<class InputIterator>
+            void insert(InputIterator first, InputIterator last) {
+                for (auto i = first; i != last; ++i) {
+                    insert(*i);
                 }
             }
 
@@ -1288,7 +1300,7 @@ namespace std {
                 const table_position pos = delegate.cuckoo_find(key, hashvalue.partial,
                                                                 guard.first(), guard.second());
                 if (pos.status == ok) {
-                    return iterator(delegate.buckets, pos.index, pos.slot);
+                    return iterator(&delegate.buckets, pos.index, pos.slot);
                 } else {
                     return end();
                 }
@@ -1299,7 +1311,7 @@ namespace std {
                 const table_position pos = delegate.cuckoo_find(key, hashvalue.partial,
                                                                 guard.first(), guard.second());
                 if (pos.status == ok) {
-                    return const_iterator(delegate.buckets, pos.index, pos.slot);
+                    return const_iterator(&delegate.buckets, pos.index, pos.slot);
                 } else {
                     return cend();
                 }
@@ -1349,7 +1361,7 @@ namespace std {
             }
 
             size_type bucket_count() const {
-                return delegate.buckets->size();
+                return delegate.buckets.size();
             }
 
             size_type max_bucket_count() const {
@@ -1405,7 +1417,7 @@ namespace std {
 
         // construct/destroy:
         explicit concurrent_unordered_map(size_type n = 16,
-                                          const Hasher& hash = hasher(),
+                                          const hasher& hash = hasher(),
                                           const key_equal& key_comparator = key_equal(),
                                           const allocator_type& allocator = allocator_type())
             : allocator(allocator)
@@ -1420,13 +1432,14 @@ namespace std {
         template <typename InputIterator>
         concurrent_unordered_map(InputIterator first, InputIterator last,
                                  size_type n = private_impl::DEFAULT_SIZE,
-                                 const hasher& hf = hasher(),
-                                 const key_equal& eql = key_equal(),
-                                 const allocator_type& a = allocator_type())
+                                 const hasher& hash = hasher(),
+                                 const key_equal& key_comparator = key_equal(),
+                                 const allocator_type& allocator = allocator_type())
             : allocator(allocator)
             , hash(hash)
             , key_comparator(key_comparator)
             , buckets(reserve_calc(n), allocator)
+            , locks(n)
             , minimum_load_factor_holder(private_impl::DEFAULT_MINIMUM_LOAD_FACTOR)
             , maximum_hashpower_holder(private_impl::NO_MAXIMUM_HASHPOWER)
             {
@@ -1436,22 +1449,40 @@ namespace std {
             : allocator(allocator)
             {
             }
-        concurrent_unordered_map(concurrent_unordered_map&& source) noexcept {
-            swap(source);
+        concurrent_unordered_map(concurrent_unordered_map&& source)
+            : allocator(std::move(source.allocator))
+            , hash(std::move(source.hash))
+            , key_comparator(std::move(source.key_comparator))
+            , buckets(std::move(source.buckets), std::move(source.allocator))
+            , locks(std::move(source.locks))
+            , minimum_load_factor_holder(source.minimum_load_factor_holder.
+                                         load(std::memory_order_acquire))
+            , maximum_hashpower_holder(source.maximum_hashpower_holder.
+                                       load(std::memory_order_acquire))
+        {
         }
         concurrent_unordered_map(concurrent_unordered_map&& source, const allocator_type& allocator)
-            : allocator(allocator){
-            swap(source);
+            : allocator(std::move(allocator))
+            , hash(std::move(source.hash))
+            , key_comparator(std::move(source.key_comparator))
+            , buckets(std::move(source.buckets), allocator)
+            , locks(std::move(source.locks), allocator)
+            , minimum_load_factor_holder(source.minimum_load_factor_holder.
+                                         load(std::memory_order_acquire))
+            , maximum_hashpower_holder(source.maximum_hashpower_holder.
+                                       load(std::memory_order_acquire))
+        {
         }
         concurrent_unordered_map(initializer_list<value_type> il,
                                  size_type n = private_impl::DEFAULT_SIZE,
-                                 const hasher& hf = hasher(),
-                                 const key_equal& eql = key_equal(),
-                                 const allocator_type& a = allocator_type())
+                                 const hasher& hash = hasher(),
+                                 const key_equal& key_comparator = key_equal(),
+                                 const allocator_type& allocator = allocator_type())
             : allocator(allocator)
             , hash(hash)
             , key_comparator(key_comparator)
             , buckets(reserve_calc(n), allocator)
+            , locks(n)
             , minimum_load_factor_holder(private_impl::DEFAULT_MINIMUM_LOAD_FACTOR)
             , maximum_hashpower_holder(private_impl::NO_MAXIMUM_HASHPOWER)
             {
@@ -1471,9 +1502,12 @@ namespace std {
         }
 
         concurrent_unordered_map& operator=(initializer_list<value_type> il) {
-            auto locked_table = lock_table();
-            locked_table.clear();
-            locked_table.insert(il.begin(), il.end());
+            {
+                auto locked_table = lock_table();
+                locked_table.clear();
+                locked_table.insert(il.begin(), il.end());
+            }
+            return *this;
         }
 
         void swap(concurrent_unordered_map& other) noexcept {
@@ -1489,8 +1523,8 @@ namespace std {
             }
 
             //do we need to swap allocators?
-            swap_allocator(allocator, other.allocator,
-                           typename allocator_type::propagate_on_container_swap());
+            std::private_impl::swap_allocator(allocator, other.allocator,
+                                              typename allocator_type::propagate_on_container_swap());
             buckets.swap(other.buckets);
             locks.swap(other.locks);
 
@@ -1520,7 +1554,7 @@ namespace std {
             const table_position pos = cuckoo_find(key, hashvalue.partial,
                                                    guard.first(), guard.second());
             if (pos.status == ok) {
-                experimental::optional<mapped_type>(buckets[pos.index].mapped(pos.slot));
+                experimental::make_optional(std::move(buckets[pos.index].mapped(pos.slot)));
             }
             return {};
         }
@@ -1536,6 +1570,19 @@ namespace std {
         template <typename... Args>
         bool emplace(key_type&& key, Args&&... val) {
             return upsert(key, std::forward<Args>(val)...);
+        }
+
+        template <typename F, typename K>
+        bool visit(K&& key, F functor) {
+            const hash_value hashvalue = hashed_key(key);
+            const auto guard = snapshot_and_lock_two<private_impl::LOCKING_ACTIVE>(hashvalue);
+            const table_position pos = cuckoo_find(key, hashvalue.partial,
+                                                   guard.first(), guard.second());
+            if (pos.status == ok) {
+                functor(buckets[pos.index].mapped(pos.slot));
+                return true;
+            }
+            return false;     
         }
 
         template <typename F, typename K, typename... Args>
@@ -1556,7 +1603,7 @@ namespace std {
             return upsert(x.first, x.second);
         }
         bool insert(value_type&& x) {
-            return upsert(std::move(x.first), std::move(x.second));
+            return upsert(std::move(const_cast<key_type&>(x.first)), std::move(x.second));
         }
         template<class InputIterator>
         void insert(InputIterator first, InputIterator last) {
@@ -1582,7 +1629,7 @@ namespace std {
             const auto guard = snapshot_and_lock_two<private_impl::LOCKING_ACTIVE>(hv);
             const table_position pos = cuckoo_find(key, hv.partial, guard.first(), guard.second());
             if (pos.status == ok) {
-                buckets[pos.index].mapped(pos.slot) = val;
+                buckets[pos.index].mapped(pos.slot) = std::forward<mapped_type>(val);
                 return 1;
             } else {
                 return 0;
@@ -1596,6 +1643,22 @@ namespace std {
             cuckoo_find(key, hv.partial, guard.first(), guard.second());
             if (pos.status == ok) {
                 del_from_bucket(pos.index, pos.slot);
+                return 1;
+            } else {
+                return 0;
+            }
+        }
+
+        template<typename F>
+        size_type erase(const key_type& key, F functor) {
+            const hash_value hv = hashed_key(key);
+            const auto guard = snapshot_and_lock_two<private_impl::LOCKING_ACTIVE>(hv);
+            const table_position pos =
+            cuckoo_find(key, hv.partial, guard.first(), guard.second());
+            if (pos.status == ok) {
+                if (functor(buckets[pos.index].mapped(pos.slot))) {
+                    del_from_bucket(pos.index, pos.slot);
+                }
                 return 1;
             } else {
                 return 0;
@@ -2296,7 +2359,7 @@ namespace std {
         // move_element moves a key-value pair from one location to another, also updating
         // the lock counters. Assumes locks are already taken.
         void move_element(size_type dst_bucket, size_type dst_slot, size_type src_bucket,
-                    size_type src_slot) {
+                          size_type src_slot) {
             buckets.move_element(dst_bucket, dst_slot, src_bucket, src_slot);
             --locks[lock_index(src_bucket)].elem_counter();
             ++locks[lock_index(dst_bucket)].elem_counter();
@@ -2471,7 +2534,8 @@ namespace std {
                 add_to_bucket(pos.index, pos.slot, hv.partial, std::forward<K>(key),
                               std::forward<Args>(val)...);
             } else {
-                buckets[pos.index].mapped(pos.slot) = mapped_type(std::forward<Args>(val)...);
+                buckets.set_element(pos.index, pos.slot, hv.partial, std::forward<K>(key),
+                                    std::forward<Args>(val)...);
             }
             return pos.status == ok;
         }
