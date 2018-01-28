@@ -6,7 +6,7 @@
 #include <type_traits>
 #include <utility>
 
-#include <libcuckoo/libcuckoo_bucket_container.hh>
+#include "unit_test_util.hh"
 
 template <bool PROPAGATE_COPY_ASSIGNMENT = true,
           bool PROPAGATE_MOVE_ASSIGNMENT = true, bool PROPAGATE_SWAP = true>
@@ -65,8 +65,8 @@ const size_t SLOT_PER_BUCKET = 4;
 
 template <class Alloc>
 using TestingContainer =
-    libcuckoo_bucket_container<std::shared_ptr<int>, int, Alloc, uint8_t,
-                               SLOT_PER_BUCKET>;
+    std::private_impl::bucket_container<std::shared_ptr<int>, int, Alloc, uint8_t,
+                                        SLOT_PER_BUCKET>;
 
 using value_type = std::pair<const std::shared_ptr<int>, int>;
 
@@ -94,7 +94,7 @@ TEST_CASE("bucket container simple stateful allocator", "[bucket container]") {
 TEST_CASE("bucket container copy construction", "[bucket container]") {
   allocator_wrapper<>::stateful_allocator<value_type> a(5);
   TestingContainer<decltype(a)> tc(2, a);
-  tc.setKV(0, 0, 2, std::make_shared<int>(10), 5);
+  tc.set_element(0, 0, 2, std::make_shared<int>(10), 5);
   TestingContainer<decltype(a)> tc2(tc);
 
   REQUIRE(tc[0].occupied(0));
@@ -113,7 +113,7 @@ TEST_CASE("bucket container copy construction", "[bucket container]") {
 TEST_CASE("bucket container move construction", "[bucket container]") {
   allocator_wrapper<>::stateful_allocator<value_type> a(5);
   TestingContainer<decltype(a)> tc(2, a);
-  tc.setKV(0, 0, 2, std::make_shared<int>(10), 5);
+  tc.set_element(0, 0, 2, std::make_shared<int>(10), 5);
   TestingContainer<decltype(a)> tc2(std::move(tc));
 
   REQUIRE(tc2[0].occupied(0));
@@ -127,9 +127,9 @@ TEST_CASE("bucket container copy assignment with propagate",
           "[bucket container]") {
   allocator_wrapper<true>::stateful_allocator<value_type> a(5);
   TestingContainer<decltype(a)> tc(2, a);
-  tc.setKV(0, 0, 2, std::make_shared<int>(10), 5);
+  tc.set_element(0, 0, 2, std::make_shared<int>(10), 5);
   TestingContainer<decltype(a)> tc2(2, a);
-  tc2.setKV(1, 0, 2, std::make_shared<int>(10), 5);
+  tc2.set_element(1, 0, 2, std::make_shared<int>(10), 5);
 
   tc2 = tc;
   REQUIRE(tc2[0].occupied(0));
@@ -147,9 +147,9 @@ TEST_CASE("bucket container copy assignment no propagate",
           "[bucket container]") {
   allocator_wrapper<false>::stateful_allocator<value_type> a(5);
   TestingContainer<decltype(a)> tc(2, a);
-  tc.setKV(0, 0, 2, std::make_shared<int>(10), 5);
+  tc.set_element(0, 0, 2, std::make_shared<int>(10), 5);
   TestingContainer<decltype(a)> tc2(2, a);
-  tc2.setKV(1, 0, 2, std::make_shared<int>(10), 5);
+  tc2.set_element(1, 0, 2, std::make_shared<int>(10), 5);
 
   tc2 = tc;
   REQUIRE(tc2[0].occupied(0));
@@ -167,9 +167,9 @@ TEST_CASE("bucket container move assignment with propagate",
           "[bucket container]") {
   allocator_wrapper<>::stateful_allocator<value_type> a(5);
   TestingContainer<decltype(a)> tc(2, a);
-  tc.setKV(0, 0, 2, std::make_shared<int>(10), 5);
+  tc.set_element(0, 0, 2, std::make_shared<int>(10), 5);
   TestingContainer<decltype(a)> tc2(2, a);
-  tc2.setKV(1, 0, 2, std::make_shared<int>(10), 5);
+  tc2.set_element(1, 0, 2, std::make_shared<int>(10), 5);
 
   tc2 = std::move(tc);
   REQUIRE(tc2[0].occupied(0));
@@ -184,9 +184,9 @@ TEST_CASE("bucket container move assignment no propagate equal",
           "[bucket container]") {
   allocator_wrapper<true, false>::stateful_allocator<value_type> a(5);
   TestingContainer<decltype(a)> tc(2, a);
-  tc.setKV(0, 0, 2, std::make_shared<int>(10), 5);
+  tc.set_element(0, 0, 2, std::make_shared<int>(10), 5);
   TestingContainer<decltype(a)> tc2(2, a);
-  tc2.setKV(1, 0, 2, std::make_shared<int>(10), 5);
+  tc2.set_element(1, 0, 2, std::make_shared<int>(10), 5);
 
   tc2 = std::move(tc);
   REQUIRE(tc2[0].occupied(0));
@@ -202,10 +202,10 @@ TEST_CASE("bucket container move assignment no propagate unequal",
           "[bucket container]") {
   allocator_wrapper<true, false>::stateful_allocator<value_type> a(5);
   TestingContainer<decltype(a)> tc(2, a);
-  tc.setKV(0, 0, 2, std::make_shared<int>(10), 5);
+  tc.set_element(0, 0, 2, std::make_shared<int>(10), 5);
   allocator_wrapper<true, false>::stateful_allocator<value_type> a2(4);
   TestingContainer<decltype(a)> tc2(2, a2);
-  tc2.setKV(1, 0, 2, std::make_shared<int>(10), 5);
+  tc2.set_element(1, 0, 2, std::make_shared<int>(10), 5);
 
   tc2 = std::move(tc);
   REQUIRE(!tc2[1].occupied(0));
@@ -225,9 +225,9 @@ TEST_CASE("bucket container move assignment no propagate unequal",
 TEST_CASE("bucket container swap no propagate", "[bucket container]") {
   allocator_wrapper<true, true, false>::stateful_allocator<value_type> a(5);
   TestingContainer<decltype(a)> tc(2, a);
-  tc.setKV(0, 0, 2, std::make_shared<int>(10), 5);
+  tc.set_element(0, 0, 2, std::make_shared<int>(10), 5);
   TestingContainer<decltype(a)> tc2(2, a);
-  tc2.setKV(1, 0, 2, std::make_shared<int>(10), 5);
+  tc2.set_element(1, 0, 2, std::make_shared<int>(10), 5);
 
   tc.swap(tc2);
 
@@ -249,9 +249,9 @@ TEST_CASE("bucket container swap no propagate", "[bucket container]") {
 TEST_CASE("bucket container swap propagate", "[bucket container]") {
   allocator_wrapper<true, true, true>::stateful_allocator<value_type> a(5);
   TestingContainer<decltype(a)> tc(2, a);
-  tc.setKV(0, 0, 2, std::make_shared<int>(10), 5);
+  tc.set_element(0, 0, 2, std::make_shared<int>(10), 5);
   TestingContainer<decltype(a)> tc2(2, a);
-  tc2.setKV(1, 0, 2, std::make_shared<int>(10), 5);
+  tc2.set_element(1, 0, 2, std::make_shared<int>(10), 5);
 
   tc.swap(tc2);
 
@@ -297,17 +297,17 @@ private:
 bool ExceptionInt::do_throw = false;
 
 using ExceptionContainer =
-    libcuckoo_bucket_container<ExceptionInt, int,
-                               std::allocator<std::pair<ExceptionInt, int>>,
-                               uint8_t, SLOT_PER_BUCKET>;
+    std::private_impl::bucket_container<ExceptionInt, int,
+                                        std::allocator<std::pair<ExceptionInt, int>>,
+                                        uint8_t, SLOT_PER_BUCKET>;
 
-TEST_CASE("setKV with throwing type maintains strong guarantee",
+TEST_CASE("set_element with throwing type maintains strong guarantee",
           "[bucket container]") {
   ExceptionContainer container(0, ExceptionContainer::allocator_type());
-  container.setKV(0, 0, 0, ExceptionInt(10), 20);
+  container.set_element(0, 0, 0, ExceptionInt(10), 20);
 
   ExceptionInt::do_throw = true;
-  REQUIRE_THROWS_AS(container.setKV(0, 1, 0, 0, 0), std::runtime_error);
+  REQUIRE_THROWS_AS(container.set_element(0, 1, 0, 0, 0), std::runtime_error);
   ExceptionInt::do_throw = false;
 
   REQUIRE(container[0].occupied(0));
@@ -320,7 +320,7 @@ TEST_CASE("setKV with throwing type maintains strong guarantee",
 TEST_CASE("copy assignment with throwing type is destroyed properly",
           "[bucket container]") {
   ExceptionContainer container(0, ExceptionContainer::allocator_type());
-  container.setKV(0, 0, 0, ExceptionInt(10), 20);
+  container.set_element(0, 0, 0, ExceptionInt(10), 20);
   ExceptionContainer other(0, ExceptionContainer::allocator_type());
 
   ExceptionInt::do_throw = true;

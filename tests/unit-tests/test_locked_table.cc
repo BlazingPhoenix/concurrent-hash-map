@@ -6,41 +6,27 @@
 #include <catch.hpp>
 
 #include "unit_test_util.hh"
-#include <libcuckoo/cuckoohash_map.hh>
 
 TEST_CASE("locked_table typedefs", "[locked_table]") {
   using Tbl = IntIntTable;
-  using Ltbl = Tbl::locked_table;
+  using Ltbl = Tbl::unsynchronized_view;
   const bool key_type = std::is_same<Tbl::key_type, Ltbl::key_type>::value;
   const bool mapped_type =
       std::is_same<Tbl::mapped_type, Ltbl::mapped_type>::value;
   const bool value_type =
       std::is_same<Tbl::value_type, Ltbl::value_type>::value;
   const bool size_type = std::is_same<Tbl::size_type, Ltbl::size_type>::value;
-  const bool difference_type =
-      std::is_same<Tbl::difference_type, Ltbl::difference_type>::value;
   const bool hasher = std::is_same<Tbl::hasher, Ltbl::hasher>::value;
   const bool key_equal = std::is_same<Tbl::key_equal, Ltbl::key_equal>::value;
   const bool allocator_type =
       std::is_same<Tbl::allocator_type, Ltbl::allocator_type>::value;
-  const bool reference = std::is_same<Tbl::reference, Ltbl::reference>::value;
-  const bool const_reference =
-      std::is_same<Tbl::const_reference, Ltbl::const_reference>::value;
-  const bool pointer = std::is_same<Tbl::pointer, Ltbl::pointer>::value;
-  const bool const_pointer =
-      std::is_same<Tbl::const_pointer, Ltbl::const_pointer>::value;
   REQUIRE(key_type);
   REQUIRE(mapped_type);
   REQUIRE(value_type);
   REQUIRE(size_type);
-  REQUIRE(difference_type);
   REQUIRE(hasher);
   REQUIRE(key_equal);
   REQUIRE(allocator_type);
-  REQUIRE(reference);
-  REQUIRE(const_reference);
-  REQUIRE(pointer);
-  REQUIRE(const_pointer);
 }
 
 TEST_CASE("locked_table move", "[locked_table]") {
@@ -49,15 +35,15 @@ TEST_CASE("locked_table move", "[locked_table]") {
   SECTION("move constructor") {
     auto lt = tbl.lock_table();
     auto lt2(std::move(lt));
-    REQUIRE(!lt.is_active());
-    REQUIRE(lt2.is_active());
+//    REQUIRE(!lt.is_active());
+//    REQUIRE(lt2.is_active());
   }
 
   SECTION("move assignment") {
     auto lt = tbl.lock_table();
     auto lt2 = std::move(lt);
-    REQUIRE(!lt.is_active());
-    REQUIRE(lt2.is_active());
+//    REQUIRE(!lt.is_active());
+//    REQUIRE(lt2.is_active());
   }
 
   SECTION("iterators compare after table is moved") {
@@ -70,6 +56,7 @@ TEST_CASE("locked_table move", "[locked_table]") {
   }
 }
 
+/*
 TEST_CASE("locked_table unlock", "[locked_table]") {
   IntIntTable tbl;
   tbl.insert(10, 10);
@@ -77,36 +64,23 @@ TEST_CASE("locked_table unlock", "[locked_table]") {
   lt.unlock();
   REQUIRE(!lt.is_active());
 }
+*/
 
 TEST_CASE("locked_table info", "[locked_table]") {
   IntIntTable tbl;
-  tbl.insert(10, 10);
+  tbl.insert(std::make_pair(10, 10));
   auto lt = tbl.lock_table();
-  REQUIRE(lt.is_active());
 
   // We should still be able to call table info operations on the
   // cuckoohash_map instance, because they shouldn't take locks.
 
-  REQUIRE(lt.slot_per_bucket() == tbl.slot_per_bucket());
   REQUIRE(lt.get_allocator() == tbl.get_allocator());
-  REQUIRE(lt.hashpower() == tbl.hashpower());
-  REQUIRE(lt.bucket_count() == tbl.bucket_count());
-  REQUIRE(lt.empty() == tbl.empty());
-  REQUIRE(lt.size() == tbl.size());
-  REQUIRE(lt.capacity() == tbl.capacity());
-  REQUIRE(lt.load_factor() == tbl.load_factor());
-  REQUIRE_THROWS_AS(lt.minimum_load_factor(1.01), std::invalid_argument);
-  lt.minimum_load_factor(lt.minimum_load_factor() * 2);
   lt.rehash(5);
-  REQUIRE_THROWS_AS(lt.maximum_hashpower(lt.hashpower() - 1),
-                    std::invalid_argument);
-  lt.maximum_hashpower(lt.hashpower() + 1);
-  REQUIRE(lt.maximum_hashpower() == tbl.maximum_hashpower());
 }
 
 TEST_CASE("locked_table clear", "[locked_table]") {
   IntIntTable tbl;
-  tbl.insert(10, 10);
+  tbl.insert(std::make_pair(10, 10));
   auto lt = tbl.lock_table();
   REQUIRE(lt.size() == 1);
   lt.clear();
@@ -117,10 +91,10 @@ TEST_CASE("locked_table clear", "[locked_table]") {
 
 TEST_CASE("locked_table insert duplicate", "[locked_table]") {
   IntIntTable tbl;
-  tbl.insert(10, 10);
+  tbl.insert(std::make_pair(10, 10));
   {
     auto lt = tbl.lock_table();
-    auto result = lt.insert(10, 20);
+    auto result = lt.insert(std::make_pair(10, 20));
     REQUIRE(result.first->first == 10);
     REQUIRE(result.first->second == 10);
     REQUIRE_FALSE(result.second);
@@ -131,10 +105,10 @@ TEST_CASE("locked_table insert duplicate", "[locked_table]") {
 
 TEST_CASE("locked_table insert new key", "[locked_table]") {
   IntIntTable tbl;
-  tbl.insert(10, 10);
+  tbl.insert(std::make_pair(10, 10));
   {
     auto lt = tbl.lock_table();
-    auto result = lt.insert(20, 20);
+    auto result = lt.insert(std::make_pair(20, 20));
     REQUIRE(result.first->first == 20);
     REQUIRE(result.first->second == 20);
     REQUIRE(result.second);
@@ -151,7 +125,9 @@ TEST_CASE("locked_table insert lifetime", "[locked_table]") {
     auto lt = tbl.lock_table();
     std::unique_ptr<int> key(new int(20));
     std::unique_ptr<int> value(new int(20));
-    auto result = lt.insert(std::move(key), std::move(value));
+
+
+    auto result = lt.insert(std::move(std::make_pair(std::move(key), std::move(value))));
     REQUIRE(*result.first->first == 20);
     REQUIRE(*result.first->second == 20);
     REQUIRE(result.second);
@@ -160,25 +136,25 @@ TEST_CASE("locked_table insert lifetime", "[locked_table]") {
   }
 
   SECTION("Unsuccessful insert") {
-    tbl.insert(new int(20), new int(20));
-    auto lt = tbl.lock_table();
-    std::unique_ptr<int> key(new int(20));
-    std::unique_ptr<int> value(new int(30));
-    auto result = lt.insert(std::move(key), std::move(value));
-    REQUIRE(*result.first->first == 20);
-    REQUIRE(*result.first->second == 20);
-    REQUIRE(!result.second);
-    REQUIRE(static_cast<bool>(key));
-    REQUIRE(static_cast<bool>(value));
+      tbl.insert(std::make_pair(std::unique_ptr<int>(new int(20)), std::unique_ptr<int>(new int(20))));
+      auto lt = tbl.lock_table();
+      std::unique_ptr<int> key(new int(20));
+      std::unique_ptr<int> value(new int(30));
+      auto result = lt.insert(std::move(std::make_pair(std::move(key), std::move(value))));
+      REQUIRE(*result.first->first == 20);
+      REQUIRE(*result.first->second == 20);
+      REQUIRE(!result.second);
+      REQUIRE(static_cast<bool>(key));
+      REQUIRE(static_cast<bool>(value));
   }
 }
 
 TEST_CASE("locked_table erase", "[locked_table]") {
   IntIntTable tbl;
   for (int i = 0; i < 5; ++i) {
-    tbl.insert(i, i);
+      tbl.insert(std::make_pair(i, i));
   }
-  using lt_t = IntIntTable::locked_table;
+  using lt_t = IntIntTable::unsynchronized_view;
 
   SECTION("simple erase") {
     auto lt = tbl.lock_table();
@@ -238,10 +214,10 @@ TEST_CASE("locked_table erase", "[locked_table]") {
 
 TEST_CASE("locked_table find", "[locked_table]") {
   IntIntTable tbl;
-  using lt_t = IntIntTable::locked_table;
+  using lt_t = IntIntTable::unsynchronized_view;
   auto lt = tbl.lock_table();
   for (int i = 0; i < 10; ++i) {
-    REQUIRE(lt.insert(i, i).second);
+      REQUIRE(lt.insert(std::make_pair(i, i)).second);
   }
   bool found_begin_elem = false;
   bool found_last_elem = false;
@@ -275,12 +251,12 @@ TEST_CASE("locked_table at", "[locked_table]") {
   IntIntTable tbl;
   auto lt = tbl.lock_table();
   for (int i = 0; i < 10; ++i) {
-    REQUIRE(lt.insert(i, i).second);
+      REQUIRE(lt.insert(std::make_pair(i, i)).second);
   }
   for (int i = 0; i < 10; ++i) {
     int &val = lt.at(i);
-    const int &const_val =
-        const_cast<const IntIntTable::locked_table &>(lt).at(i);
+    const int& const_val =
+        const_cast<const IntIntTable::unsynchronized_view &>(lt).at(i);
     REQUIRE(val == i);
     REQUIRE(const_val == i);
     ++val;
@@ -295,10 +271,10 @@ TEST_CASE("locked_table operator[]", "[locked_table]") {
   IntIntTable tbl;
   auto lt = tbl.lock_table();
   for (int i = 0; i < 10; ++i) {
-    REQUIRE(lt.insert(i, i).second);
+      REQUIRE(lt.insert(std::make_pair(i, i)).second);
   }
   for (int i = 0; i < 10; ++i) {
-    int &val = lt[i];
+    int& val = lt[i];
     REQUIRE(val == i);
     ++val;
   }
@@ -313,7 +289,7 @@ TEST_CASE("locked_table count", "[locked_table]") {
   IntIntTable tbl;
   auto lt = tbl.lock_table();
   for (int i = 0; i < 10; ++i) {
-    REQUIRE(lt.insert(i, i).second);
+      REQUIRE(lt.insert(std::make_pair(i, i)).second);
   }
   for (int i = 0; i < 10; ++i) {
     REQUIRE(lt.count(i) == 1);
@@ -323,10 +299,10 @@ TEST_CASE("locked_table count", "[locked_table]") {
 
 TEST_CASE("locked_table equal_range", "[locked_table]") {
   IntIntTable tbl;
-  using lt_t = IntIntTable::locked_table;
+  using lt_t = IntIntTable::unsynchronized_view;
   auto lt = tbl.lock_table();
   for (int i = 0; i < 10; ++i) {
-    REQUIRE(lt.insert(i, i).second);
+      REQUIRE(lt.insert(std::make_pair(i, i)).second);
   }
   for (int i = 0; i < 10; ++i) {
     std::pair<lt_t::iterator, lt_t::iterator> it_range = lt.equal_range(i);
@@ -342,6 +318,7 @@ TEST_CASE("locked_table equal_range", "[locked_table]") {
   REQUIRE(it_range.second == lt.end());
 }
 
+/*
 TEST_CASE("locked_table rehash", "[locked_table]") {
   IntIntTable tbl(10);
   auto lt = tbl.lock_table();
@@ -361,30 +338,31 @@ TEST_CASE("locked_table reserve", "[locked_table]") {
   lt.reserve(4096);
   REQUIRE(lt.hashpower() == 10);
 }
+*/
 
 TEST_CASE("locked_table equality", "[locked_table]") {
   IntIntTable tbl1(40);
   auto lt1 = tbl1.lock_table();
   for (int i = 0; i < 10; ++i) {
-    lt1.insert(i, i);
+      lt1.insert(std::make_pair(i, i));
   }
 
   IntIntTable tbl2(30);
   auto lt2 = tbl2.lock_table();
   for (int i = 0; i < 10; ++i) {
-    lt2.insert(i, i);
+      lt2.insert(std::make_pair(i, i));
   }
 
   IntIntTable tbl3(30);
   auto lt3 = tbl3.lock_table();
   for (int i = 0; i < 10; ++i) {
-    lt3.insert(i, i + 1);
+      lt3.insert(std::make_pair(i, i + 1));
   }
 
   IntIntTable tbl4(40);
   auto lt4 = tbl4.lock_table();
   for (int i = 0; i < 10; ++i) {
-    lt4.insert(i + 1, i);
+      lt4.insert(std::make_pair(i + 1, i));
   }
 
   REQUIRE(lt1 == lt2);
@@ -401,10 +379,10 @@ TEST_CASE("locked_table equality", "[locked_table]") {
   REQUIRE_FALSE(lt4 == lt3);
 }
 
-template <typename Table> void check_all_locks_taken(Table &tbl) {
-  auto &locks = UnitTestInternalAccess::get_current_locks(tbl);
-  for (auto &lock : locks) {
-    REQUIRE_FALSE(lock.try_lock());
+template <typename Table> void check_all_locks_taken(Table& tbl) {
+  auto& locks = UnitTestInternalAccess::get_current_locks(tbl);
+  for (size_t i = 0; i < locks.size(); ++i) {
+      REQUIRE_FALSE(locks[i].try_lock(std::private_impl::LOCKING_ACTIVE()));
   }
 }
 
@@ -415,7 +393,7 @@ TEST_CASE("locked table holds locks after resize", "[locked table]") {
 
   // After a cuckoo_fast_double, all locks are still taken
   for (int i = 0; i < 5; ++i) {
-    lt.insert(i, i);
+      lt.insert(std::make_pair(i, i));
   }
   check_all_locks_taken(tbl);
 
@@ -424,11 +402,12 @@ TEST_CASE("locked table holds locks after resize", "[locked table]") {
   check_all_locks_taken(tbl);
 }
 
+/*
 TEST_CASE("locked table IO", "[locked_table]") {
   IntIntTable tbl(0);
   auto lt = tbl.lock_table();
   for (int i = 0; i < 100; ++i) {
-    lt.insert(i, i);
+      lt.insert(std::make_pair(i, i));
   }
 
   std::stringstream sstream;
@@ -452,7 +431,8 @@ TEST_CASE("locked table IO", "[locked_table]") {
     REQUIRE(i == lt2.at(i));
   }
 }
-
+*/
+/*
 TEST_CASE("empty locked table IO", "[locked table]") {
   IntIntTable tbl(0);
   auto lt = tbl.lock_table();
@@ -472,3 +452,4 @@ TEST_CASE("empty locked table IO", "[locked table]") {
   REQUIRE(0.5 == lt.minimum_load_factor());
   REQUIRE(10 == lt.maximum_hashpower());
 }
+*/

@@ -14,6 +14,7 @@
 #include <vector>
 #include <experimental/optional>
 
+class UnitTestInternalAccess;
 
 namespace std {
     namespace private_impl {
@@ -122,10 +123,7 @@ namespace std {
                               "bucket_container requires bucket to be nothrow "
                               "constructible");
                 for (size_type i = 0; i < size(); ++i) {
-                    bucket_allocator.construct(&buckets[i]);
-                    //TODO:FIXME
-//                    traits::construct(allocator, &buckets[i]);
-
+                    traits::construct(this->allocator, &buckets[i]);
                 }
             }
 
@@ -215,7 +213,8 @@ namespace std {
             }
 
             template <typename K, typename... Args>
-            void set_element(size_type index, size_type slot, partial_t partial_key, K&& k,
+            void set_element(size_type index, size_type slot, partial_t partial_key,
+                             K&& k,
                              Args&&... args) {
                 bucket& b = buckets[index];
                 assert(!b.occupied(slot));
@@ -943,7 +942,7 @@ namespace std {
                 using iterator_category = std::bidirectional_iterator_tag;
 
                 const_iterator() {}
-                              
+
                 bool operator==(const const_iterator& other) const {
                     return buckets == other.buckets && bucket_index == other.bucket_index &&
                         (bucket_position == other.bucket_position || bucket_index == buckets->size());
@@ -982,7 +981,7 @@ namespace std {
                     --(*this);
                     return old;
                 }
-                
+
             protected:
                 void increment() {
                     ++bucket_position;
@@ -1021,7 +1020,7 @@ namespace std {
                                       slot)
                     {
                     }
-                
+
                 const_local_iterator begin(bucket* bucket) {
                     return const_local_iterator::begin(bucket);
                 }
@@ -1095,7 +1094,7 @@ namespace std {
                     : const_iterator(buckets, bucket_index, slot)
                     {
                     }
-                
+
                 local_iterator begin(bucket* bucket) {
                     return local_iterator::begin(bucket);
                 }
@@ -1148,6 +1147,32 @@ namespace std {
                 return 1U << delegate.buckets->maximum_hashpower();
             }
 
+            bool operator==(const unsynchronized_view& other) const {
+                if (size() != other.size()) {
+                    return false;
+                }
+                for (const auto& elem : other) {
+                    auto it = find(elem.first);
+                    if (it == end() || it->second != elem.second) {
+                        return false;
+                    }
+                }
+                return true;
+            }
+
+            bool operator!=(const unsynchronized_view& other) const {
+                if (size() != other.size()) {
+                    return true;
+                }
+                for (const auto& elem : other) {
+                    auto it = find(elem.first);
+                    if (it == end() || it->second != elem.second) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
             // modifiers:
             template<typename... Args>
             pair<iterator, bool> emplace(Args&&... args) {
@@ -1169,13 +1194,13 @@ namespace std {
                 return std::make_pair(iterator(&delegate.buckets, pos.index, pos.slot),
                                       pos.status == ok);
             }
-            pair<iterator, bool> insert(const value_type&& x) {
+            pair<iterator, bool> insert(value_type&& x) {
                 hash_value hv = delegate.hashed_key(x.first);
                 auto b = delegate.snapshot_and_lock_two<private_impl::LOCKING_INACTIVE>(hv);
                 table_position pos = delegate.cuckoo_insert_loop(hv, b, x.first);
                 if (pos.status == ok) {
                     delegate.add_to_bucket(pos.index, pos.slot, hv.partial,
-                                           std::move(x.first),
+                                           std::move(const_cast<key_type&>(x.first)),
                                            std::move(x.second));
                 } else {
                     assert(pos.status == failure_key_duplicated);
@@ -1240,12 +1265,12 @@ namespace std {
             }
 
             iterator erase(iterator position) {
-                delegate.del_from_bucket(position.bucket_index, position.slot);
-                return iterator(delegate.buckets, position.bucket_index, position.slot);
+                delegate.del_from_bucket(position.bucket_index, position.bucket_position.slot);
+                return iterator(&delegate.buckets, position.bucket_index, position.bucket_position.slot);
             }
             iterator erase(const_iterator position) {
-                delegate.del_from_bucket(position.bucket_index, position.slot);
-                return iterator(delegate.buckets, position.bucket_index, position.slot);
+                delegate.del_from_bucket(position.bucket_index, position.bucket_position.slot);
+                return iterator(&delegate.buckets, position.bucket_index, position.bucket_position.slot);
             }
             size_type erase(const key_type& key) {
                 const hash_value hv = delegate.hashed_key(key);
@@ -1340,11 +1365,11 @@ namespace std {
 
             // element access:
             mapped_type& operator[](const key_type& key) {
-                auto result = insert(key);
+                auto result = insert(value_type(key, {}));
                 return result.first->second;
             }
             mapped_type& operator[](key_type&& key) {
-                auto result = insert(std::forward<key_type>(key));
+                auto result = insert(std::move(value_type(std::forward<key_type>(key), {})));
                 return result.first->second;
             }
             const mapped_type& at(const key_type& key) const {
@@ -1586,7 +1611,7 @@ namespace std {
                 functor(buckets[pos.index].mapped(pos.slot));
                 return true;
             }
-            return false;     
+            return false;
         }
 
         template <typename F, typename K, typename... Args>
@@ -2502,7 +2527,8 @@ namespace std {
         template <typename K, typename... Args>
         void add_to_bucket(const size_type bucket_index, const size_type slot,
                            const partial_t partial, K&& key, Args&&... val) {
-            buckets.set_element(bucket_index, slot, partial, std::forward<K>(key),
+            buckets.set_element(bucket_index, slot, partial,
+                                std::forward<K>(key),
                                 std::forward<Args>(val)...);
             ++locks[lock_index(bucket_index)].elem_counter();
         }
@@ -2684,5 +2710,7 @@ namespace std {
 
         std::atomic<size_type> minimum_load_factor_holder;
         std::atomic<size_type> maximum_hashpower_holder;
+
+        friend UnitTestInternalAccess;
     };
 }

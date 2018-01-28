@@ -15,7 +15,7 @@
 
 // Returns a statically allocated value used to keep track of how many unfreed
 // bytes have been allocated. This value is shared across all threads.
-std::atomic<int64_t> &get_unfreed_bytes();
+std::atomic<int64_t>& get_unfreed_bytes();
 
 // We define a a allocator class that keeps track of how many unfreed bytes have
 // been allocated. Users can specify an optional bound for how many bytes can be
@@ -120,45 +120,48 @@ using UniquePtrTable = std::concurrent_unordered_map<
 
 class UnitTestInternalAccess {
 public:
-  static const size_t IntIntBucketSize = sizeof(
-      std::private_impl::bucket_container<int, int, std::allocator<std::pair<const int, int>>,
-                                          std::private_impl::partial_t,
-      std::private_impl::DEFAULT_SLOTS_PER_BUCKET>);
+    static const size_t IntIntBucketSize = sizeof(
+        std::private_impl::bucket_container<int, int, std::allocator<std::pair<const int, int>>,
+        std::private_impl::partial_t,
+        std::private_impl::DEFAULT_SLOTS_PER_BUCKET>);
 
-/*  template <class CuckoohashMap>
-  static size_t old_table_info_size(const CuckoohashMap &table) {
-    // This is not thread-safe
-    return table.old_table_infos.size();
-  }
-  */
-    /*
-  template <class CuckoohashMap>
-  static typename CuckoohashMap::partial_t partial_key(const size_t hv) {
-    return CuckoohashMap::partial_key(hv);
-  }
+    /*  template <class CuckoohashMap>
+        static size_t old_table_info_size(const CuckoohashMap &table) {
+        // This is not thread-safe
+        return table.old_table_infos.size();
+        }
+    */
 
-  template <class CuckoohashMap>
-  static size_t index_hash(const size_t hashpower, const size_t hv) {
-    return CuckoohashMap::index_hash(hashpower, hv);
-  }
+    template <class ConcurrentHashMap>
+    static typename ConcurrentHashMap::partial_t partial_key(const size_t hv) {
+        return ConcurrentHashMap::partial_key(hv);
+    }
 
-  template <class CuckoohashMap>
-  static size_t alt_index(const size_t hashpower,
-                          const typename CuckoohashMap::partial_t partial,
-                          const size_t index) {
-    return CuckoohashMap::alt_index(hashpower, partial, index);
-  }
+    template <class ConcurrentHashMap>
+    static size_t index_hash(const size_t hashpower, const size_t hv) {
+        return ConcurrentHashMap::index_hash(hashpower, hv);
+    }
 
-  template <class CuckoohashMap> static size_t reserve_calc(size_t n) {
-    return CuckoohashMap::reserve_calc(n);
-  }
+    template <class ConcurrentHashMap>
+    static size_t alt_index(const size_t hashpower,
+                            const typename ConcurrentHashMap::partial_t partial,
+                            const size_t index) {
+        return ConcurrentHashMap::alt_index(hashpower, partial, index);
+    }
 
-  template <class CuckoohashMap>
-  static typename CuckoohashMap::locks_t &
-  get_current_locks(const CuckoohashMap &table) {
-    return table.get_current_locks();
-  }
-  */
+    template <class ConcurrentHashMap> static size_t reserve_calc(size_t n) {
+        return ConcurrentHashMap::reserve_calc(n);
+    }
+
+    template <class ConcurrentHashMap>
+    static typename ConcurrentHashMap::locks_t& get_current_locks(const ConcurrentHashMap& table) {
+        return table.locks;
+    }
+
+    template <class ConcurrentHashMap>
+    static typename ConcurrentHashMap::size_type hashpower(const ConcurrentHashMap& table) {
+        return table.hashpower();
+    }
 };
 
 #endif // UNIT_TEST_UTIL_HH_
