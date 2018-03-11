@@ -58,7 +58,7 @@ int main() {
     concurrent_unordered_map<string_view, shared_ptr<user_t> > users;
     // single threaded fill
     {
-        auto unsafe_users = std::move(users.lock_table());
+        auto unsafe_users = std::move(users.get_unsynchronized_view());
         read_users_from_file(unsafe_users);
     }
 
@@ -92,7 +92,7 @@ int main() {
         }
 
         // single threaded processing:
-        auto unsafe_users = std::move(users.lock_table());
+        auto unsafe_users = std::move(users.get_unsynchronized_view());
         count_statistics(unsafe_users);
         dump_to_file(unsafe_users);
         cleanup(unsafe_users);

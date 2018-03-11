@@ -11,7 +11,7 @@ using IntIntTable = std::concurrent_unordered_map<int, int>;
 
 TEST_CASE("default size", "[constructor]") {
   IntIntTable t;
-  const auto& tbl = t.lock_table();
+  const auto& tbl = t.get_unsynchronized_view();
   REQUIRE(tbl.size() == 0);
   REQUIRE(tbl.empty());
   REQUIRE(tbl.bucket_count() == 1UL << UnitTestInternalAccess::hashpower(t));
@@ -20,7 +20,7 @@ TEST_CASE("default size", "[constructor]") {
 
 TEST_CASE("given size", "[constructor]") {
   IntIntTable t(1);
-  const auto& tbl = t.lock_table();
+  const auto& tbl = t.get_unsynchronized_view();
 
   REQUIRE(tbl.size() == 0);
   REQUIRE(tbl.empty());
@@ -157,8 +157,8 @@ TEST_CASE("move constructor", "[constructor]") {
   tbl_t map(10, StatefulHash(10), StatefulKeyEqual(20), alloc_t(30));
   map.insert(std::make_pair(10, 10));
   tbl_t map2(std::move(map));
-  const auto& m1 = map.lock_table();
-  const auto& m2 = map2.lock_table();
+  const auto& m1 = map.get_unsynchronized_view();
+  const auto& m2 = map2.get_unsynchronized_view();
   REQUIRE(m1.size() == 0);
   REQUIRE(m2.size() == 1);
   REQUIRE(m2.hash_function().state == 10);
@@ -173,7 +173,7 @@ TEST_CASE("move constructor different allocator", "[constructor]") {
   map.insert(std::make_pair(10, 10));
   tbl_t map2(std::move(map), alloc_t(40));
   const auto& m1 = map.lock_table();
-  const auto& m2 = map2.lock_table();
+  const auto& m2 = map2.get_unsynchronized_view();
 
   REQUIRE(m1.size() == 1);
   REQUIRE(m1.hash_function().state == 10);
@@ -189,7 +189,7 @@ TEST_CASE("move constructor different allocator", "[constructor]") {
 TEST_CASE("initializer list constructor", "[constructor]") {
   tbl_t map({{1, 2}, {3, 4}, {5, 6}}, 3, StatefulHash(10), StatefulKeyEqual(20),
             alloc_t(30));
-  const auto& m = map.lock_table();
+  const auto& m = map.get_unsynchronized_view();
   REQUIRE(m.hash_function().state == 10);
   REQUIRE(m.key_eq().state == 20);
   REQUIRE(m.get_allocator().state == 30);
@@ -204,8 +204,8 @@ TEST_CASE("swap maps", "[constructor]") {
   map.swap(map2);
 
   {
-      const auto& m1 = map.lock_table();
-      const auto& m2 = map2.lock_table();
+      const auto& m1 = map.get_unsynchronized_view();
+      const auto& m2 = map2.get_unsynchronized_view();
       
       REQUIRE(m1.size() == 1);
       REQUIRE(m1.hash_function().state == 40);
@@ -220,8 +220,8 @@ TEST_CASE("swap maps", "[constructor]") {
   std::swap(map, map2);
 
   {
-      const auto& m1 = map.lock_table();
-      const auto& m2 = map2.lock_table();
+      const auto& m1 = map.get_unsynchronized_view();
+      const auto& m2 = map2.get_unsynchronized_view();
       
       REQUIRE(m1.size() == 1);
       REQUIRE(m1.hash_function().state == 10);
@@ -259,8 +259,8 @@ TEST_CASE("move assign different allocators", "[constructor]") {
   tbl_t map({{1, 2}}, 1, StatefulHash(10), StatefulKeyEqual(20), alloc_t(30));
   tbl_t map2({{3, 4}}, 1, StatefulHash(40), StatefulKeyEqual(50), alloc_t(60));
 
-  const auto& m1 = map.lock_table();
-  const auto& m2 = map2.lock_table();
+  const auto& m1 = map.get_unsynchronized_view();
+  const auto& m2 = map2.get_unsynchronized_view();
 
   map = std::move(map2);
   REQUIRE(m1.size() == 1);
@@ -278,8 +278,8 @@ TEST_CASE("move assign same allocators", "[constructor]") {
   tbl_t map({{1, 2}}, 1, StatefulHash(10), StatefulKeyEqual(20), alloc_t(30));
   tbl_t map2({{3, 4}}, 1, StatefulHash(40), StatefulKeyEqual(50), alloc_t(30));
 
-  const auto& m1 = map.lock_table();
-  const auto& m2 = map2.lock_table();
+  const auto& m1 = map.get_unsynchronized_view();
+  const auto& m2 = map2.get_unsynchronized_view();
 
   map = std::move(map2);
   REQUIRE(m1.size() == 1);
@@ -297,12 +297,12 @@ TEST_CASE("move assign same allocators", "[constructor]") {
 TEST_CASE("initializer list assignment", "[constructor]") {
   tbl_t map({{1, 2}}, 1, StatefulHash(10), StatefulKeyEqual(20), alloc_t(30));
   {
-      const auto& m = map.lock_table();
+      const auto& m = map.get_unsynchronized_view();
       REQUIRE(m.find(1)->second == 2);
   }
   map = { {3, 4} };
   {
-      const auto& m = map.lock_table();
+      const auto& m = map.get_unsynchronized_view();
       REQUIRE(m.find(3)->second == 4);
   }
 }

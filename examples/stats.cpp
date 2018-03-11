@@ -42,5 +42,5 @@ int main() {
         t.join();
     }
 
-    process_stats(std::move(stats.lock_table()));
+    process_stats(std::move(stats.get_unsynchronized_view()));
 }

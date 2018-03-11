@@ -813,6 +813,7 @@ namespace std {
                 using iterator_category = std::bidirectional_iterator_tag;
 
                 const_local_iterator() = default;
+
                 bool operator==(const const_local_iterator& other) const {
                     return data == other.data && slot == other.slot;
                 }
@@ -830,10 +831,12 @@ namespace std {
                 }
 
                 const_local_iterator& operator++() {
-                    ++slot;
-                    while (slot < private_impl::DEFAULT_SLOTS_PER_BUCKET &&
-                           !data->occupied(slot)) {
+                    if (slot < private_impl::DEFAULT_SLOTS_PER_BUCKET) {
                         ++slot;
+                        while (slot < private_impl::DEFAULT_SLOTS_PER_BUCKET &&
+                               !data->occupied(slot)) {
+                            ++slot;
+                        }
                     }
 
                     return *this;
@@ -971,7 +974,7 @@ namespace std {
                 }
 
                 bool operator!=(const const_iterator& it) const {
-                    return const_iterator::operator!=(it);
+                    return !const_iterator::operator==(it);
                 }
 
                 reference operator*() const {
@@ -1041,6 +1044,9 @@ namespace std {
                     , bucket_position(&(*buckets)[bucket_index != buckets->size() ? bucket_index : 0],
                                       slot)
                     {
+                        if (bucket_index < buckets->size() && bucket_position == local_iterator::end(&(*buckets)[bucket_index])) {
+                            increment();
+                        }
                     }
 
                 const_local_iterator begin(bucket* bucket) {
@@ -1092,13 +1098,13 @@ namespace std {
                 }
 
                 iterator operator++() {
+                    const_iterator::increment();
+                    return *this;
+                }
+                iterator& operator++(int) {
                     iterator old(*this);
                     const_iterator::increment();
                     return std::move(old);
-                }
-                iterator& operator++(int) {
-                    const_iterator::increment();
-                    return *this;
                 }
 
                 iterator operator--() {
@@ -1288,11 +1294,13 @@ namespace std {
 
             iterator erase(iterator position) {
                 delegate.del_from_bucket(position.bucket_index, position.bucket_position.slot);
-                return iterator(&delegate.buckets, position.bucket_index, position.bucket_position.slot);
+                iterator result(&delegate.buckets, position.bucket_index, position.bucket_position.slot);
+                return result;
             }
             iterator erase(const_iterator position) {
                 delegate.del_from_bucket(position.bucket_index, position.bucket_position.slot);
-                return iterator(&delegate.buckets, position.bucket_index, position.bucket_position.slot);
+                iterator result(&delegate.buckets, position.bucket_index, position.bucket_position.slot);
+                return result;
             }
             size_type erase(const key_type& key) {
                 const hash_value hv = delegate.hashed_key(key);
@@ -1542,7 +1550,7 @@ namespace std {
 
         ~concurrent_unordered_map() = default;
 
-        unsynchronized_view lock_table() noexcept {
+        unsynchronized_view get_unsynchronized_view() noexcept {
             return unsynchronized_view(*this);
         }
 
@@ -1567,7 +1575,8 @@ namespace std {
 
         concurrent_unordered_map& operator=(initializer_list<value_type> il) {
             {
-                auto locked_table = lock_table();
+                //TODO: FIXME
+                auto locked_table = get_unsynchronized_view();
                 locked_table.clear();
                 locked_table.insert(il.begin(), il.end());
             }

@@ -59,14 +59,14 @@ TEST_CASE("noncopyable iteration", "[noncopyable]") {
       tbl.emplace(Uptr(new int(i)), Uptr(new int(i)));
   }
   {
-      auto locked_tbl = tbl.lock_table();
+      auto locked_tbl = tbl.get_unsynchronized_view();
       for (auto& kv : locked_tbl) {
           REQUIRE(*kv.first == *kv.second);
           *kv.second += 1;
       }
   }
   {
-      auto locked_tbl = tbl.lock_table();
+      auto locked_tbl = tbl.get_unsynchronized_view();
       for (auto &kv : locked_tbl) {
           REQUIRE(*kv.first == *kv.second - 1);
       }

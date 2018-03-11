@@ -66,7 +66,7 @@ public: // Therad safe:
 public: // Not thread safe!
     unordered_map<order_key, order_t> snapshot() {
         validate();
-        auto v = std::move(orders.lock_table());
+        auto v = std::move(orders.get_unsynchronized_view());
         validate();
         unordered_map<order_key, order_t > ret{v.begin(), v.end()};
         validate();
