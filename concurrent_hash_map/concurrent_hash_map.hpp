@@ -842,7 +842,7 @@ namespace std {
                 const_local_iterator operator++(int) {
                     const_local_iterator old(*this);
                     ++(*this);
-                    return old;
+                    return std::move(old);
                 }
 
                 const_local_iterator operator--() {
@@ -856,7 +856,7 @@ namespace std {
                 const_local_iterator operator--(int) {
                     const_local_iterator old(*this);
                     --(*this);
-                    return old;
+                    return std::move(old);
                 }
 
             protected:
@@ -923,7 +923,7 @@ namespace std {
                 local_iterator operator++(int) {
                     iterator old(*this);
                     const_local_iterator::operator++();
-                    return old;
+                    return std::move(old);
                 }
 
                 local_iterator& operator--() {
@@ -934,7 +934,7 @@ namespace std {
                 local_iterator operator--(int) {
                     local_iterator old(*this);
                     const_local_iterator::operator--();
-                    return old;
+                    return std::move(old);
                 }
 
             private:
@@ -990,7 +990,7 @@ namespace std {
                 const_iterator operator++(int) {
                     const_iterator old(*this);
                     ++(*this);
-                    return old;
+                    return std::move(old);
                 }
 
                 const_iterator& operator--() {
@@ -1001,14 +1001,14 @@ namespace std {
                 const_iterator operator--(int) {
                     const_iterator old(*this);
                     --(*this);
-                    return old;
+                    return std::move(old);
                 }
 
             protected:
                 void increment() {
                     ++bucket_position;
                     if (bucket_position == local_iterator::end(&((*buckets)[bucket_index]))) {
-                        ++bucket_position;
+                        ++bucket_index;
                         while (bucket_index < buckets->size()) {
                             bucket_position = local_iterator::begin(&((*buckets)[bucket_index]));
                             if (bucket_position != local_iterator::end(&((*buckets)[bucket_index]))) {
@@ -1093,8 +1093,8 @@ namespace std {
 
                 iterator operator++() {
                     iterator old(*this);
-                    ++(*this);
-                    return old;
+                    const_iterator::increment();
+                    return std::move(old);
                 }
                 iterator& operator++(int) {
                     const_iterator::increment();
@@ -1104,7 +1104,7 @@ namespace std {
                 iterator operator--() {
                     iterator old(*this);
                     --(*this);
-                    return old;
+                    return std::move(old);
                 }
                 iterator& operator--(int) {
                     const_iterator::decrement();
@@ -1631,9 +1631,17 @@ namespace std {
         }
 
         // concurrent-safe modifiers:
-        template <typename... Args>
-        bool emplace(Args&&... val) {
-            return upsert(std::forward<Args>(val)...);
+        template <typename K, typename... Args>
+        bool emplace(K&& key, Args&&... val) {
+            hash_value hv = hashed_key(key);
+            auto b = snapshot_and_lock_two<private_impl::LOCKING_ACTIVE>(hv);
+            table_position pos = cuckoo_insert_loop(hv, b, key);
+            if (pos.status == ok) {
+                add_to_bucket(pos.index, pos.slot, hv.partial, std::forward<K>(key),
+                              std::forward<Args>(val)...);
+            }
+
+            return pos.status == ok;
         }
 
         template <typename F, typename K>
@@ -1664,10 +1672,10 @@ namespace std {
         }
 
         bool insert(const value_type& x) {
-            return upsert(x.first, x.second);
+            return emplace(x.first, x.second);
         }
         bool insert(value_type&& x) {
-            return upsert(x.first, x.second);
+            return emplace(std::move(x.first), std::move(x.second));
         }
         template<class InputIterator>
         void insert(InputIterator first, InputIterator last) {
@@ -1676,13 +1684,24 @@ namespace std {
             }
         }
 
-        template <typename V>
-        bool insert_or_assign(const key_type& key, V&& val) {
-            return upsert(key, val);
-        }
-        template <typename... Args>
-        bool insert_or_assign(Args... args) {
-            return upsert(std::forward<Args>(args)...);
+        template <typename K, typename... Args>
+        bool insert_or_assign(K&& key, Args&&... val)  {
+            hash_value hv = hashed_key(key);
+            auto b = snapshot_and_lock_two<private_impl::LOCKING_ACTIVE>(hv);
+            table_position pos = cuckoo_insert_loop(hv, b, key);
+            if (pos.status == ok) {
+                add_to_bucket(pos.index, pos.slot, hv.partial, std::forward<K>(key),
+                              std::forward<Args>(val)...);
+            } else {
+                if (std::is_assignable<mapped_type&, mapped_type>::value) {
+                    buckets[pos.index].mapped(pos.slot) = mapped_type(std::forward<Args>(val)...);
+                } else {
+                    buckets.erase_element(pos.index, pos.slot);
+                    buckets.set_element(pos.index, pos.slot, hv.partial, std::forward<K>(key),
+                                        std::forward<Args>(val)...);
+                }
+            }
+            return pos.status == ok;
         }
 
         size_type update(const key_type& key, const mapped_type& val) {
@@ -2458,7 +2477,7 @@ namespace std {
                                   for (; i < end; ++i) {
                                       for (size_type j = 0; j < SLOTS_PER_BUCKET; ++j) {
                                           if (buckets[i].occupied(j)) {
-                                              new_map.upsert(buckets[i].movable_key(j),
+                                              new_map.emplace(buckets[i].movable_key(j),
                                                              std::move(buckets[i].mapped(j)));
                                           }
                                       }
@@ -2590,20 +2609,6 @@ namespace std {
                 }
             }
             return true;
-        }
-
-        template <typename K, typename... Args>
-        bool upsert(K&& key, Args&&... val) {
-            hash_value hv = hashed_key(key);
-            auto b = snapshot_and_lock_two<private_impl::LOCKING_ACTIVE>(hv);
-            table_position pos = cuckoo_insert_loop(hv, b, key);
-            if (pos.status == ok) {
-                add_to_bucket(pos.index, pos.slot, hv.partial, std::forward<K>(key),
-                              std::forward<Args>(val)...);
-            } else {
-                buckets[pos.index].mapped(pos.slot) = mapped_type(std::forward<Args>(val)...);
-            }
-            return pos.status == ok;
         }
 
         template <typename K, typename LOCK_TYPE>

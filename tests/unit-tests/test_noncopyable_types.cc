@@ -23,7 +23,7 @@ void check_key_eq(Tbl& tbl, int key, int expected_val) {
 TEST_CASE("noncopyable insert and update", "[noncopyable]") {
   Tbl tbl(TBL_INIT);
   for (size_t i = 0; i < TBL_SIZE; ++i) {
-      REQUIRE(tbl.insert(std::move(std::make_pair(std::move(Uptr(new int(i))), std::move(Uptr(new int(i)))))));
+      REQUIRE(tbl.emplace(std::move(Uptr(new int(i))), std::move(Uptr(new int(i)))));
   }
   for (size_t i = 0; i < TBL_SIZE; ++i) {
       check_key_eq(tbl, i, i);
@@ -56,7 +56,7 @@ TEST_CASE("noncopyable upsert", "[noncopyable]") {
 TEST_CASE("noncopyable iteration", "[noncopyable]") {
   Tbl tbl(TBL_INIT);
   for (size_t i = 0; i < TBL_SIZE; ++i) {
-      tbl.insert(std::make_pair(Uptr(new int(i)), Uptr(new int(i))));
+      tbl.emplace(Uptr(new int(i)), Uptr(new int(i)));
   }
   {
       auto locked_tbl = tbl.lock_table();
@@ -103,17 +103,17 @@ TEST_CASE("noncopyable insert lifetime") {
     SECTION("Successful insert") {
         Uptr key(new int(20));
         Uptr value(new int(20));
-        REQUIRE(tbl.insert(std::make_pair(std::move(key), std::move(value))));
+        REQUIRE(tbl.emplace(std::move(key), std::move(value)));
         REQUIRE(!static_cast<bool>(key));
         REQUIRE(!static_cast<bool>(value));
     }
     
     // Unsuccessful insert
     SECTION("Unsuccessful insert") {
-        tbl.insert(std::make_pair(Uptr(new int(20)), Uptr(new int(20))));
+        tbl.emplace(Uptr(new int(20)), Uptr(new int(20)));
         Uptr key(new int(20));
         Uptr value(new int(30));
-        REQUIRE_FALSE(tbl.insert(std::make_pair(std::move(key), std::move(value))));
+        REQUIRE_FALSE(tbl.emplace(std::move(key), std::move(value)));
         REQUIRE(static_cast<bool>(key));
         REQUIRE(static_cast<bool>(value));
     }
@@ -121,7 +121,7 @@ TEST_CASE("noncopyable insert lifetime") {
 
 TEST_CASE("noncopyable erase_fn") {
     Tbl tbl;
-    tbl.insert(std::make_pair(Uptr(new int(10)), Uptr(new int(10))));
+    tbl.emplace(Uptr(new int(10)), Uptr(new int(10)));
     auto decrement_and_erase = [](Uptr &p) {
         --(*p);
         return *p == 0;
