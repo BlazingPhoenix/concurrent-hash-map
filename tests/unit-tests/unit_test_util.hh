@@ -123,7 +123,7 @@ public:
     static const size_t IntIntBucketSize = sizeof(
         std::private_impl::bucket_container<int, int, std::allocator<std::pair<const int, int>>,
         std::private_impl::partial_t,
-        std::private_impl::DEFAULT_SLOTS_PER_BUCKET>);
+        std::private_impl::DEFAULT_SLOTS_PER_BUCKET>::bucket);
 
     /*  template <class CuckoohashMap>
         static size_t old_table_info_size(const CuckoohashMap &table) {

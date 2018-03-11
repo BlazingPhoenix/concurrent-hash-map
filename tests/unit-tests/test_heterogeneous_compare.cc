@@ -65,10 +65,10 @@ TEST_CASE("heterogeneous compare", "[heterogeneous compare]") {
   foo_hashes = 0;
   int_hashes = 0;
 
-  SECTION("insert") {
+  SECTION("emplace") {
     {
       foo_map map;
-      map.insert(std::make_pair(0, true));
+      map.emplace(0, true);
     }
     REQUIRE(int_constructions == 1);
     REQUIRE(copy_constructions == 0);
@@ -79,10 +79,10 @@ TEST_CASE("heterogeneous compare", "[heterogeneous compare]") {
     REQUIRE(int_hashes == 1);
   }
 
-  SECTION("foo insert") {
+  SECTION("foo emplace") {
     {
       foo_map map;
-      map.insert(std::make_pair(Foo(0), true));
+      map.emplace(Foo(0), true);
     }
     REQUIRE(int_constructions == 1);
     REQUIRE(copy_constructions == 1);
@@ -100,7 +100,10 @@ TEST_CASE("heterogeneous compare", "[heterogeneous compare]") {
       foo_map map;
       map.insert_or_assign(0, true);
       map.insert_or_assign(0, false);
-      REQUIRE_FALSE(map.find(0));
+      std::experimental::optional<bool> val;
+      map.visit(0, [&val] (bool map_value){ val = map_value; });
+      REQUIRE(val);
+      REQUIRE_FALSE(val.value());
     }
     REQUIRE(int_constructions == 1);
     REQUIRE(copy_constructions == 0);
@@ -116,7 +119,7 @@ TEST_CASE("heterogeneous compare", "[heterogeneous compare]") {
       foo_map map;
       map.insert_or_assign(Foo(0), true);
       map.insert_or_assign(Foo(0), false);
-      REQUIRE_FALSE(map.find(Foo(0)));
+      REQUIRE_FALSE(map.find(Foo(0)).value());
     }
     REQUIRE(int_constructions == 3);
     REQUIRE(copy_constructions == 1);
@@ -131,38 +134,37 @@ TEST_CASE("heterogeneous compare", "[heterogeneous compare]") {
   SECTION("find") {
     {
       foo_map map;
-      map.insert(std::make_pair(0, true));
-      bool val;
-      map.find(0, val);
+      map.emplace(0, true);
+      std::experimental::optional<bool> val;
+      map.visit(0, [&val] (bool map_value){ val = map_value; });
       REQUIRE(val);
-      REQUIRE(map.find(0, val) == true);
-      REQUIRE(map.find(1, val) == false);
+      REQUIRE(val.value());
+      val = std::experimental::nullopt;
+      map.visit(1, [&val] (bool map_value){ val = map_value; });
+      REQUIRE_FALSE(val);
     }
     REQUIRE(int_constructions == 1);
     REQUIRE(copy_constructions == 0);
     REQUIRE(destructions == 1);
     REQUIRE(foo_comparisons == 0);
-    REQUIRE(int_comparisons == 2);
+    REQUIRE(int_comparisons == 1);
     REQUIRE(foo_hashes == 0);
-    REQUIRE(int_hashes == 4);
+    REQUIRE(int_hashes == 3);
   }
 
   SECTION("foo find") {
     {
       foo_map map;
-      map.insert(std::make_pair(0, true));
-      bool val;
-      map.find(Foo(0), val);
-      REQUIRE(val);
-      REQUIRE(map.find(Foo(0), val) == true);
-      REQUIRE(map.find(Foo(1), val) == false);
+      map.emplace(0, true);
+      REQUIRE((bool)map.find(Foo(0)));
+      REQUIRE_FALSE((bool)map.find(Foo(1)));
     }
-    REQUIRE(int_constructions == 4);
+    REQUIRE(int_constructions == 3);
     REQUIRE(copy_constructions == 0);
-    REQUIRE(destructions == 4);
-    REQUIRE(foo_comparisons == 2);
+    REQUIRE(destructions == 3);
+    REQUIRE(foo_comparisons == 1);
     REQUIRE(int_comparisons == 0);
-    REQUIRE(foo_hashes == 3);
+    REQUIRE(foo_hashes == 2);
     REQUIRE(int_hashes == 1);
   }
 
@@ -170,7 +172,7 @@ TEST_CASE("heterogeneous compare", "[heterogeneous compare]") {
     {
       foo_map map(2);
 //      map.rehash(2);
-      map.insert(std::make_pair(0, true));
+      map.emplace(0, true);
       REQUIRE(map.find(0));
       // Shouldn't do comparison because of different partial key
       REQUIRE(!map.find(4));
@@ -187,7 +189,7 @@ TEST_CASE("heterogeneous compare", "[heterogeneous compare]") {
   SECTION("erase") {
     {
       foo_map map;
-      map.insert(std::make_pair(0, true));
+      map.emplace(0, true);
       REQUIRE(map.erase(0));
       REQUIRE(!map.find(0));
     }
@@ -203,9 +205,9 @@ TEST_CASE("heterogeneous compare", "[heterogeneous compare]") {
   SECTION("update") {
     {
       foo_map map;
-      map.insert(std::make_pair(0, true));
+      map.emplace(0, true);
       REQUIRE(map.update(0, false));
-      REQUIRE(!map.find(0));
+      REQUIRE(!map.find(0).value());
     }
     REQUIRE(int_constructions == 1);
     REQUIRE(copy_constructions == 0);

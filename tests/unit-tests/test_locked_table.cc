@@ -100,7 +100,7 @@ TEST_CASE("locked_table insert duplicate", "[locked_table]") {
     REQUIRE_FALSE(result.second);
     result.first->second = 50;
   }
-  REQUIRE(tbl.find(10) == 50);
+  REQUIRE(*tbl.find(10) == 50);
 }
 
 TEST_CASE("locked_table insert new key", "[locked_table]") {
@@ -114,8 +114,8 @@ TEST_CASE("locked_table insert new key", "[locked_table]") {
     REQUIRE(result.second);
     result.first->second = 50;
   }
-  REQUIRE(tbl.find(10) == 10);
-  REQUIRE(tbl.find(20) == 50);
+  REQUIRE(*tbl.find(10) == 10);
+  REQUIRE(*tbl.find(20) == 50);
 }
 
 TEST_CASE("locked_table insert lifetime", "[locked_table]") {

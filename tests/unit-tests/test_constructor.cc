@@ -14,7 +14,7 @@ TEST_CASE("default size", "[constructor]") {
   const auto& tbl = t.lock_table();
   REQUIRE(tbl.size() == 0);
   REQUIRE(tbl.empty());
-  REQUIRE(tbl.bucket_count() == 1UL << 1);//tbl.hashpower());
+  REQUIRE(tbl.bucket_count() == 1UL << UnitTestInternalAccess::hashpower(t));
   REQUIRE(tbl.load_factor() == 0);
 }
 
@@ -131,7 +131,7 @@ TEST_CASE("range constructor", "[constructor]") {
   REQUIRE(map.key_eq().state == 20);
   REQUIRE(map.get_allocator().state == 30);
   for (int i = 1; i <= 5; i += 2) {
-    REQUIRE(map.find(i) == i + 1);
+      REQUIRE(map.find(i).value() == i + 1);
   }
 }
 /*
@@ -152,6 +152,7 @@ TEST_CASE("copy constructor other allocator", "[constructor]") {
   REQUIRE(map2.get_allocator().state == 30);
 }
 */
+
 TEST_CASE("move constructor", "[constructor]") {
   tbl_t map(10, StatefulHash(10), StatefulKeyEqual(20), alloc_t(30));
   map.insert(std::make_pair(10, 10));
@@ -164,7 +165,7 @@ TEST_CASE("move constructor", "[constructor]") {
   REQUIRE(m2.key_eq().state == 20);
   REQUIRE(m2.get_allocator().state == 30);
 } 
- 
+
 /*
 
 TEST_CASE("move constructor different allocator", "[constructor]") {
@@ -253,6 +254,7 @@ TEST_CASE("copy assign different allocators", "[constructor]") {
 }
 */
 
+
 TEST_CASE("move assign different allocators", "[constructor]") {
   tbl_t map({{1, 2}}, 1, StatefulHash(10), StatefulKeyEqual(20), alloc_t(30));
   tbl_t map2({{3, 4}}, 1, StatefulHash(40), StatefulKeyEqual(50), alloc_t(60));
@@ -265,7 +267,7 @@ TEST_CASE("move assign different allocators", "[constructor]") {
   REQUIRE(m1.find(3)->second == 4);
   REQUIRE(m1.hash_function().state == 40);
   REQUIRE(m1.key_eq().state == 50);
-  REQUIRE(m1.get_allocator().state == 30);
+  REQUIRE(m1.get_allocator().state == 60);
 
   REQUIRE(m2.hash_function().state == 40);
   REQUIRE(m2.key_eq().state == 50);
