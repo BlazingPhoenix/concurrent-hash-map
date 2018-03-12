@@ -1023,12 +1023,11 @@ namespace std {
                 }
 
                 void decrement() {
-                    const_local_iterator begin = local_iterator::begin(&((*buckets)[bucket_index]));
-                    if (begin == bucket_position) {
+                    if (bucket_index == buckets->size() ||
+                            local_iterator::begin(&((*buckets)[bucket_index])) == bucket_position) {
                         --bucket_index;
                         while (local_iterator::begin(&((*buckets)[bucket_index])) ==
-                               local_iterator::end(&((*buckets)[bucket_index])))
-                        {
+                               local_iterator::end(&((*buckets)[bucket_index]))) {
                             --bucket_index;
                         }
                         bucket_position = local_iterator::end(&((*buckets)[bucket_index]));
@@ -1108,13 +1107,13 @@ namespace std {
                 }
 
                 iterator operator--() {
+                    const_iterator::decrement();
+                    return *this;
+                }
+                iterator& operator--(int) {
                     iterator old(*this);
                     --(*this);
                     return std::move(old);
-                }
-                iterator& operator--(int) {
-                    const_iterator::decrement();
-                    return *this;
                 }
 
             private:

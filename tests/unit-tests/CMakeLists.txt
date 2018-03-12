@@ -2,7 +2,7 @@ add_executable(unit_tests
   test_constructor.cc
   test_hash_properties.cc
   test_heterogeneous_compare.cc
-#  test_iterator.cc
+  test_iterator.cc
   test_noncopyable_types.cc
 #  test_resize.cc
   test_runner.cc

@@ -53,7 +53,7 @@ TEST_CASE("iterator types", "[iterator]") {
 TEST_CASE("empty table iteration", "[iterator]") {
   IntIntTable table;
   {
-    auto lt = table.lock_table();
+    auto lt = table.get_unsynchronized_view();
     REQUIRE(lt.begin() == lt.begin());
     REQUIRE(lt.begin() == lt.end());
 
@@ -72,7 +72,7 @@ TEST_CASE("iterator walkthrough", "[iterator]") {
   }
 
   SECTION("forward postfix walkthrough") {
-    auto lt = table.lock_table();
+    auto lt = table.get_unsynchronized_view();
     auto it = lt.cbegin();
     for (size_t i = 0; i < lt.size(); ++i) {
       REQUIRE((*it).first == (*it).second);
@@ -84,7 +84,7 @@ TEST_CASE("iterator walkthrough", "[iterator]") {
   }
 
   SECTION("forward prefix walkthrough") {
-    auto lt = table.lock_table();
+    auto lt = table.get_unsynchronized_view();
     auto it = lt.cbegin();
     for (size_t i = 0; i < lt.size(); ++i) {
       REQUIRE((*it).first == (*it).second);
@@ -95,7 +95,7 @@ TEST_CASE("iterator walkthrough", "[iterator]") {
   }
 
   SECTION("backwards postfix walkthrough") {
-    auto lt = table.lock_table();
+    auto lt = table.get_unsynchronized_view();
     auto it = lt.cend();
     for (size_t i = 0; i < lt.size(); ++i) {
       auto old_it = it;
@@ -107,7 +107,7 @@ TEST_CASE("iterator walkthrough", "[iterator]") {
   }
 
   SECTION("backwards prefix walkthrough") {
-    auto lt = table.lock_table();
+    auto lt = table.get_unsynchronized_view();
     auto it = lt.cend();
     for (size_t i = 0; i < lt.size(); ++i) {
       --it;
@@ -118,7 +118,7 @@ TEST_CASE("iterator walkthrough", "[iterator]") {
   }
 
   SECTION("walkthrough works after move") {
-    auto lt = table.lock_table();
+    auto lt = table.get_unsynchronized_view();
     auto it = lt.cend();
     auto lt2 = std::move(lt);
     for (size_t i = 0; i < lt.size(); ++i) {
@@ -136,7 +136,7 @@ TEST_CASE("iterator modification", "[iterator]") {
       table.insert(std::make_pair(i, i));
   }
 
-  auto lt = table.lock_table();
+  auto lt = table.get_unsynchronized_view();
   for (auto it = lt.begin(); it != lt.end(); ++it) {
     it->second = it->second + 1;
   }
@@ -151,7 +151,7 @@ TEST_CASE("iterator modification", "[iterator]") {
 /*
 TEST_CASE("lock table blocks inserts", "[iterator]") {
   IntIntTable table;
-  auto lt = table.lock_table();
+  auto lt = table.get_unsynchronized_view();
   std::thread thread([&table]() {
     for (int i = 0; i < 10; ++i) {
       table.insert(i, i);
@@ -171,7 +171,7 @@ TEST_CASE("Cast iterator to const iterator", "[iterator]") {
   for (int i = 0; i < 10; ++i) {
       table.insert(std::make_pair(i, i));
   }
-  auto lt = table.lock_table();
+  auto lt = table.get_unsynchronized_view();
   for (IntIntTable::unsynchronized_view::iterator it = lt.begin(); it != lt.end();
        ++it) {
     REQUIRE(it->first == it->second);
