@@ -7,6 +7,7 @@
 #include <utility>
 
 #include "unit_test_util.hh"
+#include <iostream>
 
 template <bool PROPAGATE_COPY_ASSIGNMENT = true,
           bool PROPAGATE_MOVE_ASSIGNMENT = true, bool PROPAGATE_SWAP = true>
@@ -278,7 +279,7 @@ struct ExceptionInt {
 
   ExceptionInt(const ExceptionInt &other) : x(other.x) { maybeThrow(); }
 
-  ExceptionInt &operator=(const ExceptionInt &other) {
+  ExceptionInt& operator=(const ExceptionInt& other) {
     x = other.x;
     maybeThrow();
     return *this;
