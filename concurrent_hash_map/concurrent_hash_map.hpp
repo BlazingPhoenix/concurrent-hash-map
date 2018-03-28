@@ -11,6 +11,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <list>
 #include <vector>
 #include <experimental/optional>
 
@@ -23,6 +24,8 @@ namespace std {
         static constexpr const std::size_t LOCK_ARRAY_GRANULARITY = 0;
         static constexpr const double DEFAULT_MINIMUM_LOAD_FACTOR = 0.05;
         static constexpr const std::size_t NO_MAXIMUM_HASHPOWER = std::numeric_limits<size_t>::max();
+        static constexpr const std::size_t MAX_NUM_LOCKS = 1UL << 16;
+
 
         using size_type = std::size_t;
         using partial_t = uint8_t;
@@ -347,6 +350,21 @@ namespace std {
 
         class alignas(64) spinlock {
         public:
+            spinlock()
+                : counter(0) {
+                flag.clear();
+            }
+
+            spinlock(const spinlock& other)
+                : counter(other.counter) {
+                flag.clear();
+            }
+
+            spinlock& operator = (const spinlock& other) {
+                counter = other.counter;
+                return *this;
+            }
+
             void lock(LOCKING_ACTIVE) noexcept {
                 while (flag.test_and_set(std::memory_order_acq_rel));
             }
@@ -1323,8 +1341,9 @@ namespace std {
 
             void clear() noexcept {
                 delegate.buckets.clear();
-                for (size_type i = 0; i < delegate.locks.size(); ++i) {
-                    delegate.locks[i].elem_counter() = 0;
+                auto& locks = delegate.get_current_locks();
+                for (size_type i = 0; i < locks.size(); ++i) {
+                    locks[i].elem_counter() = 0;
                 }
             }
 
@@ -1482,10 +1501,13 @@ namespace std {
             , hash(hash)
             , key_comparator(key_comparator)
             , buckets(reserve_calc(n), allocator)
-            , locks(n, allocator)
+            , all_locks(allocator)
             , minimum_load_factor_holder(private_impl::DEFAULT_MINIMUM_LOAD_FACTOR)
-            , maximum_hashpower_holder(private_impl::NO_MAXIMUM_HASHPOWER)
+            , maximum_hash_power_holder(private_impl::NO_MAXIMUM_HASHPOWER)
             {
+                std::private_impl::spinlock x;
+                all_locks.emplace_back(std::min(bucket_count(), size_type(std::private_impl::MAX_NUM_LOCKS)),
+                                   std::private_impl::spinlock(), allocator);
             }
         template <typename InputIterator>
         concurrent_unordered_map(InputIterator first, InputIterator last,
@@ -1497,10 +1519,12 @@ namespace std {
             , hash(hash)
             , key_comparator(key_comparator)
             , buckets(reserve_calc(n), allocator)
-            , locks(n, allocator)
+            , all_locks(allocator)
             , minimum_load_factor_holder(private_impl::DEFAULT_MINIMUM_LOAD_FACTOR)
-            , maximum_hashpower_holder(private_impl::NO_MAXIMUM_HASHPOWER)
+            , maximum_hash_power_holder(private_impl::NO_MAXIMUM_HASHPOWER)
             {
+                all_locks.emplace_back(std::min(n, size_type(std::private_impl::MAX_NUM_LOCKS)),
+                                   std::private_impl::spinlock(), get_allocator());
                 insert(first, last);
             }
         concurrent_unordered_map(const allocator_type& allocator)
@@ -1512,10 +1536,10 @@ namespace std {
             , hash(std::move(source.hash))
             , key_comparator(std::move(source.key_comparator))
             , buckets(std::move(source.buckets), std::move(source.allocator)) //TODO:FIXME
-            , locks(std::move(source.locks))
+            , all_locks(std::move(source.all_locks))
             , minimum_load_factor_holder(source.minimum_load_factor_holder.
                                          load(std::memory_order_acquire))
-            , maximum_hashpower_holder(source.maximum_hashpower_holder.
+            , maximum_hash_power_holder(source.maximum_hash_power_holder.
                                        load(std::memory_order_acquire))
         {
         }
@@ -1524,10 +1548,10 @@ namespace std {
             , hash(std::move(source.hash))
             , key_comparator(std::move(source.key_comparator))
             , buckets(std::move(source.buckets), allocator)
-            , locks(std::move(source.locks), allocator)
+            , all_locks(std::move(source.locks), allocator)
             , minimum_load_factor_holder(source.minimum_load_factor_holder.
                                          load(std::memory_order_acquire))
-            , maximum_hashpower_holder(source.maximum_hashpower_holder.
+            , maximum_hash_power_holder(source.maximum_hash_power_holder.
                                        load(std::memory_order_acquire))
         {
         }
@@ -1540,10 +1564,12 @@ namespace std {
             , hash(hash)
             , key_comparator(key_comparator)
             , buckets(reserve_calc(n), allocator)
-            , locks(n)
+            , all_locks(allocator)
             , minimum_load_factor_holder(private_impl::DEFAULT_MINIMUM_LOAD_FACTOR)
-            , maximum_hashpower_holder(private_impl::NO_MAXIMUM_HASHPOWER)
+            , maximum_hash_power_holder(private_impl::NO_MAXIMUM_HASHPOWER)
             {
+                all_locks.emplace_back(std::min(n, size_type(std::private_impl::MAX_NUM_LOCKS)),
+                                   std::private_impl::spinlock(), get_allocator());
                 insert(il.begin(), il.end());
             }
 
@@ -1560,11 +1586,11 @@ namespace std {
                 this->hash = std::move(source.hash);
                 this->key_comparator = std::move(source.key_comparator);
                 this->buckets = std::move(source.buckets);
-                this->locks = std::move(source.locks);
+                this->all_locks = std::move(source.all_locks);
                 this->minimum_load_factor_holder.store(source.minimum_load_factor_holder.
                                                        load(std::memory_order_acquire),
                                                        std::memory_order_release);
-                this->maximum_hashpower_holder.store(source.maximum_hashpower_holder.
+                this->maximum_hash_power_holder.store(source.maximum_hash_power_holder.
                                                      load(std::memory_order_acquire),
                                                      std::memory_order_release);
 
@@ -1583,39 +1609,23 @@ namespace std {
         }
 
         void swap(concurrent_unordered_map& other) noexcept {
-            all_buckets_guard<private_impl::LOCKING_ACTIVE> unlocker1(nullptr);
-            all_buckets_guard<private_impl::LOCKING_ACTIVE> unlocker2(nullptr);
-
-            if (this < std::addressof(other)) {
-                unlocker1 = snapshot_and_lock_all<private_impl::LOCKING_ACTIVE>();
-                unlocker2 = other.snapshot_and_lock_all<private_impl::LOCKING_ACTIVE>();
-            } else {
-                unlocker2 = other.snapshot_and_lock_all<private_impl::LOCKING_ACTIVE>();
-                unlocker1 = snapshot_and_lock_all<private_impl::LOCKING_ACTIVE>();
-            }
-
-            //do we need to swap allocators?
-            std::private_impl::swap_allocator(allocator, other.allocator,
-                                              typename allocator_type::propagate_on_container_swap());
-            buckets.swap(other.buckets);
-            locks.swap(other.locks);
-
-            size_type tmp = minimum_load_factor_holder.load(std::memory_order_acquire);
-            minimum_load_factor_holder.store(other.minimum_load_factor_holder.
-                                             load(std::memory_order_acquire), std::memory_order_release);
-            other.minimum_load_factor_holder.store(tmp, std::memory_order_release);
-
-            tmp = maximum_hashpower_holder.load(std::memory_order_acquire);
-            maximum_hashpower_holder.store(other.maximum_hashpower_holder.
-                                           load(std::memory_order_acquire), std::memory_order_release);
-            other.maximum_hashpower_holder.store(tmp, std::memory_order_release);
             std::swap(hash, other.hash);
             std::swap(key_comparator, other.key_comparator);
+            buckets.swap(other.buckets);
+            all_locks.swap(other.all_locks);
+
+            other.minimum_load_factor_holder.store(
+                    minimum_load_factor_holder.exchange(other.minimum_load_factor(), std::memory_order_release),
+                    std::memory_order_release);
+            other.maximum_hash_power_holder.store(
+                    maximum_hash_power_holder.exchange(other.maximum_hashpower(), std::memory_order_release),
+                    std::memory_order_release);
         }
 
         void clear() noexcept {
             auto unlocker = snapshot_and_lock_all<private_impl::LOCKING_ACTIVE>();
             buckets.clear();
+            auto& locks = get_current_locks();
             for (size_type i = 0; i < locks.size(); ++i) {
                 locks[i].elem_counter() = 0;
             }
@@ -1783,9 +1793,13 @@ namespace std {
 
     private:
         using expansion_lock_t = std::mutex;
-        using locks_t = private_impl::spinlock_dynarray<16 - private_impl::LOCK_ARRAY_GRANULARITY,
-                                                        private_impl::LOCK_ARRAY_GRANULARITY,
-                                                        Allocator>;
+        template <typename U>
+        using rebind_alloc =
+        typename std::allocator_traits<allocator_type>::template rebind_alloc<U>;
+
+        using locks_t = std::vector<std::private_impl::spinlock, rebind_alloc<std::private_impl::spinlock>>;
+        using all_locks_t = std::list<locks_t, rebind_alloc<locks_t>>;
+
         using hash_value = private_impl::hash_value;
 
         static constexpr auto SLOTS_PER_BUCKET = private_impl::DEFAULT_SLOTS_PER_BUCKET;
@@ -1913,7 +1927,7 @@ namespace std {
 
         // lock_index converts an index into buckets to an index into locks.
         static inline size_type lock_index(const size_type bucket_index) {
-            return bucket_index & (locks_t::max_size() - 1);
+            return bucket_index & (std::private_impl::MAX_NUM_LOCKS - 1);
         }
 
         template <typename LOCK_TYPE>
@@ -1981,33 +1995,54 @@ namespace std {
         template <typename LOCK_TYPE>
         class all_buckets_guard {
         public:
-            all_buckets_guard(locks_t* locks)
-                : locks(locks)
+            all_buckets_guard()
+                    : all_locks(nullptr)
+            {
+            }
+
+            all_buckets_guard(all_locks_t* all_locks, typename all_locks_t::iterator first_locked)
+                : all_locks(all_locks, unlocker(first_locked))
                 {
                 }
 
             bool is_active() const {
-                return static_cast<bool>(locks);
+                return static_cast<bool>(all_locks);
             }
 
             void unlock() {
-                locks.reset(nullptr);
+                all_locks.reset(nullptr);
             }
 
             void release() {
-                locks.release();
+                all_locks.release();
             }
 
         private:
             struct unlocker {
-                void operator()(locks_t *p) const {
-                    for (size_type i = 0; i < p->size(); ++i) {
-                        (*p)[i].unlock(LOCK_TYPE());
+                typename all_locks_t::iterator first_locked;
+
+                unlocker()
+                {
+                }
+
+                unlocker(typename all_locks_t::iterator first_locked)
+                        : first_locked(first_locked)
+                {
+                }
+
+                void operator()(all_locks_t* p) const {
+                    if (p != nullptr) {
+                        for (auto it = first_locked; it != p->end(); ++it) {
+                            locks_t& locks = *it;
+                            for (std::private_impl::spinlock& lock : locks) {
+                                lock.unlock(LOCK_TYPE());
+                            }
+                        }
                     }
                 }
             };
 
-            std::unique_ptr<locks_t, unlocker> locks;
+            std::unique_ptr<all_locks_t, unlocker> all_locks;
         };
 
         // This exception is thrown whenever we try to lock a bucket, but the
@@ -2021,6 +2056,7 @@ namespace std {
         template <typename LOCK_TYPE>
         inline void check_hashpower(const size_type old_hashpower, const size_type lock) const {
             if (hashpower() != old_hashpower) {
+                locks_t& locks = get_current_locks();
                 locks[lock].unlock(LOCK_TYPE());
                 throw hashpower_changed();
             }
@@ -2033,6 +2069,7 @@ namespace std {
         inline bucket_guard<LOCK_TYPE> lock_one(const size_type hashpower,
                                                 const size_type index) const {
             const size_type l = lock_index(index);
+            locks_t& locks = get_current_locks();
             locks[l].lock(LOCK_TYPE());
             check_hashpower<LOCK_TYPE>(hashpower, l);
             return bucket_guard<LOCK_TYPE>(&locks, index);
@@ -2050,6 +2087,8 @@ namespace std {
             if (l2 < l1) {
                 std::swap(l1, l2);
             }
+            locks_t& locks = get_current_locks();
+
             locks[l1].lock(LOCK_TYPE());
             check_hashpower<LOCK_TYPE>(hashpower, l1);
             if (l2 != l1) {
@@ -2064,10 +2103,26 @@ namespace std {
         // should be accessing the buckets.
         template <typename LOCK_TYPE>
         all_buckets_guard<LOCK_TYPE> snapshot_and_lock_all() const {
-            for (size_type i = 0; i < locks.size(); ++i) {
-                locks[i].lock(LOCK_TYPE());
+            if (!LOCK_TYPE()) {
+                return all_buckets_guard<LOCK_TYPE>();
             }
-            return all_buckets_guard<LOCK_TYPE>(&locks);
+
+            // all_locks_ should never decrease in size, so if it is non-empty now, it
+            // will remain non-empty
+            assert(!all_locks.empty());
+            auto first_locked = all_locks.end();
+            --first_locked;
+            auto current_locks = first_locked;
+            while (current_locks != all_locks.end()) {
+                locks_t& locks = *current_locks;
+                for (std::private_impl::spinlock& lock : locks) {
+                    lock.lock(LOCK_TYPE());
+                }
+                ++current_locks;
+            }
+            // Once we have taken all the locks of the "current" container, nobody
+            // else can do locking operations on the table.
+            return all_buckets_guard<LOCK_TYPE>(&all_locks, first_locked);
         }
 
         template <typename LOCK_TYPE>
@@ -2082,6 +2137,7 @@ namespace std {
                 std::swap(l[2], l[0]);
             if (l[1] < l[0])
                 std::swap(l[1], l[0]);
+            locks_t& locks = get_current_locks();
             locks[l[0]].lock(LOCK_TYPE());
             check_hashpower<LOCK_TYPE>(hp, l[0]);
             if (l[1] != l[0]) {
@@ -2195,9 +2251,9 @@ namespace std {
                         insert_slot = path[0].slot;
                         assert(insert_bucket == guard.first() || insert_bucket == guard.second());
                         assert(LOCK_TYPE() == private_impl::LOCKING_INACTIVE() ||
-                               !locks[lock_index(guard.first())].try_lock(LOCK_TYPE()));
+                               !get_current_locks()[lock_index(guard.first())].try_lock(LOCK_TYPE()));
                         assert(LOCK_TYPE() == private_impl::LOCKING_INACTIVE() ||
-                               !locks[lock_index(guard.second())].try_lock(LOCK_TYPE()));
+                               !get_current_locks()[lock_index(guard.second())].try_lock(LOCK_TYPE()));
                         assert(!buckets[insert_bucket].occupied(insert_slot));
                         done = true;
                         break;
@@ -2326,7 +2382,7 @@ namespace std {
         template <typename AUTO_RESIZE>
         operation_status check_resize_validity(const size_type orig_hp,
                                                const size_type new_hp) {
-            const size_type mhp = maximum_hashpower_holder.load(std::memory_order_acquire);
+            const size_type mhp = maximum_hash_power_holder.load(std::memory_order_acquire);
             if (mhp != private_impl::NO_MAXIMUM_HASHPOWER && new_hp > mhp) {
                 throw private_impl::maximum_hashpower_exceeded(new_hp);
             }
@@ -2341,6 +2397,33 @@ namespace std {
             return ok;
         }
 
+        // When we expand the contanier, we may need to expand the locks array, if
+        // the current locks array is smaller than the maximum size and also smaller
+        // than the number of buckets in the upcoming buckets container. In this
+        // case, we grow the locks array to the smaller of the maximum lock array
+        // size and the bucket count. This is done by allocating an entirely new lock
+        // container, taking all the locks, copying over the counters, and then
+        // finally adding it to the end of `all_locks_`, thereby designating it the
+        // "current" locks container. It is the responsibility of the caller to
+        // unlock all locks taken, including the new locks, whenever it is done with
+        // them, so that old threads can resume and potentially re-start.
+        template <typename LOCK_TYPE>
+        void maybe_resize_locks(size_type new_bucket_count) {
+            locks_t& current_locks = get_current_locks();
+            if (!(current_locks.size() < std::private_impl::MAX_NUM_LOCKS &&
+                  current_locks.size() < new_bucket_count)) {
+                return;
+            }
+
+            locks_t new_locks(std::min(size_type(std::private_impl::MAX_NUM_LOCKS), new_bucket_count),
+                              std::private_impl::spinlock(), get_allocator());
+            for (std::private_impl::spinlock& lock : new_locks) {
+                lock.lock(LOCK_TYPE());
+            }
+            assert(new_locks.size() > current_locks.size());
+            std::copy(current_locks.begin(), current_locks.end(), new_locks.begin());
+            all_locks.emplace_back(std::move(new_locks));
+        }
 
         // cuckoo_fast_double will double the size of the table by taking advantage
         // of the properties of index_hash and alt_index. If the key's move
@@ -2359,9 +2442,8 @@ namespace std {
                 return st;
             }
 
-            locks.resize(1UL << new_hp);
             auto unlocker = snapshot_and_lock_all<LOCK_TYPE>();
-            buckets.resize(new_hp);
+            buckets_t new_buckets(new_hp, get_allocator());
 
             // We gradually unlock the new table, by processing each of the buckets
             // corresponding to each lock we took. For each slot in an old bucket,
@@ -2372,71 +2454,67 @@ namespace std {
             // because unlocking new locks would enable operations on the table
             // before we want them. We also re-evaluate the partial key stored at
             // each slot, since it depends on the hashpower.
-            const size_type locks_to_move =
-                std::min(locks.size(), hashsize(current_hp));
-            parallel_exec(0, locks_to_move,
-                          [this, current_hp, new_hp](size_type start, size_type end,
+            parallel_exec(0, hashsize(current_hp),
+                          [this, current_hp, new_hp, &new_buckets](size_type start, size_type end,
                                                      std::exception_ptr &eptr) {
                               try {
-                                  move_buckets<LOCK_TYPE>(current_hp, new_hp, start, end);
+                                  move_buckets<LOCK_TYPE>(new_buckets, current_hp, new_hp, start, end);
                               } catch (...) {
                                   eptr = std::current_exception();
                               }
                           });
-            parallel_exec(locks_to_move, locks.size(),
-                          [this](size_type i, size_type end, std::exception_ptr &) {
-                              for (; i < end; ++i) {
-                                  locks[i].unlock(LOCK_TYPE());
-                              }
-                          });
-            // Since we've unlocked the buckets ourselves, we don't need the
-            // unlocker to do it for us.
-            unlocker.release();
+
+            maybe_resize_locks<LOCK_TYPE>(1UL << new_hp);
+            buckets.swap(new_buckets);
             return ok;
         }
 
         template <typename LOCK_TYPE>
-        void move_buckets(size_type current_hp, size_type new_hp,
+        void move_buckets(buckets_t& new_buckets, size_type current_hp, size_type new_hp,
                           size_type start_lock_ind, size_type end_lock_ind) {
-            for (; start_lock_ind < end_lock_ind; ++start_lock_ind) {
-                for (size_type bucket_i = start_lock_ind; bucket_i < hashsize(current_hp);
-                     bucket_i += locks_t::max_size()) {
-                    // By doubling the table size, the index_hash and alt_index of
-                    // each key got one bit added to the top, at position
-                    // current_hp, which means anything we have to move will either
-                    // be at the same bucket position, or exactly
-                    // hashsize(current_hp) later than the current bucket
-                    bucket& old_bucket = buckets[bucket_i];
-                    const size_type new_bucket_i = bucket_i + hashsize(current_hp);
-                    size_type new_bucket_slot = 0;
+            for (size_type old_bucket_ind = start_lock_ind; old_bucket_ind < end_lock_ind;
+                 ++old_bucket_ind) {
+                // By doubling the table size, the index_hash and alt_index of
+                // each key got one bit added to the top, at position
+                // current_hp, which means anything we have to move will either
+                // be at the same bucket position, or exactly
+                // hashsize(current_hp) later than the current bucket
+                bucket &old_bucket = buckets[old_bucket_ind];
+                const size_type new_bucket_ind = old_bucket_ind + hashsize(current_hp);
+                size_type new_bucket_slot = 0;
 
-                    // Move each item from the old bucket that needs moving into the
-                    // new bucket
-                    for (size_type slot = 0; slot < SLOTS_PER_BUCKET; ++slot) {
-                        if (!old_bucket.occupied(slot)) {
-                            continue;
-                        }
-                        const hash_value hv = hashed_key(old_bucket.key(slot));
-                        const size_type old_ihash = index_hash(current_hp, hv.hash);
-                        const size_type old_ahash =
-                            alt_index(current_hp, hv.partial, old_ihash);
-                        const size_type new_ihash = index_hash(new_hp, hv.hash);
-                        const size_type new_ahash = alt_index(new_hp, hv.partial, new_ihash);
-                        if ((bucket_i == old_ihash && new_ihash == new_bucket_i) ||
-                            (bucket_i == old_ahash && new_ahash == new_bucket_i)) {
-                            // We're moving the key from the old bucket to the new
-                            // one
-                            move_element(new_bucket_i, new_bucket_slot++, bucket_i, slot);
-                        } else {
-                            // Check that we don't want to move the new key
-                            assert((bucket_i == old_ihash && new_ihash == old_ihash) ||
-                                   (bucket_i == old_ahash && new_ahash == old_ahash));
-                        }
+                // For each occupied slot, either move it into its same position in the
+                // new buckets container, or to the first available spot in the new
+                // bucket in the new buckets container.
+                for (size_type old_bucket_slot = 0; old_bucket_slot < std::private_impl::DEFAULT_SLOTS_PER_BUCKET;
+                     ++old_bucket_slot) {
+                    if (!old_bucket.occupied(old_bucket_slot)) {
+                        continue;
                     }
+                    const hash_value hv = hashed_key(old_bucket.key(old_bucket_slot));
+                    const size_type old_ihash = index_hash(current_hp, hv.hash);
+                    const size_type old_ahash =
+                            alt_index(current_hp, hv.partial, old_ihash);
+                    const size_type new_ihash = index_hash(new_hp, hv.hash);
+                    const size_type new_ahash = alt_index(new_hp, hv.partial, new_ihash);
+                    size_type dst_bucket_ind, dst_bucket_slot;
+                    if ((old_bucket_ind == old_ihash && new_ihash == new_bucket_ind) ||
+                        (old_bucket_ind == old_ahash && new_ahash == new_bucket_ind)) {
+                        // We're moving the key to the new bucket
+                        dst_bucket_ind = new_bucket_ind;
+                        dst_bucket_slot = new_bucket_slot++;
+                    } else {
+                        // We're moving the key to the old bucket
+                        assert((old_bucket_ind == old_ihash && new_ihash == old_ihash) ||
+                               (old_bucket_ind == old_ahash && new_ahash == old_ahash));
+                        dst_bucket_ind = old_bucket_ind;
+                        dst_bucket_slot = old_bucket_slot;
+                    }
+                    new_buckets.set_element(dst_bucket_ind, dst_bucket_slot++,
+                                            old_bucket.partial(old_bucket_slot),
+                                            old_bucket.movable_key(old_bucket_slot),
+                                            std::move(old_bucket.mapped(old_bucket_slot)));
                 }
-                // Now we can unlock the lock, because all the buckets corresponding
-                // to it have been unlocked
-                locks[start_lock_ind].unlock(LOCK_TYPE());
             }
         }
 
@@ -2449,13 +2527,17 @@ namespace std {
             return blog2;
         }
 
+        locks_t& get_current_locks() const {
+            return all_locks.back();
+        }
+
         // move_element moves a key-value pair from one location to another, also updating
         // the lock counters. Assumes locks are already taken.
         void move_element(size_type dst_bucket, size_type dst_slot, size_type src_bucket,
                           size_type src_slot) {
             buckets.move_element(dst_bucket, dst_slot, src_bucket, src_slot);
-            --locks[lock_index(src_bucket)].elem_counter();
-            ++locks[lock_index(dst_bucket)].elem_counter();
+            --get_current_locks()[lock_index(src_bucket)].elem_counter();
+            ++get_current_locks()[lock_index(dst_bucket)].elem_counter();
         }
 
 
@@ -2504,7 +2586,7 @@ namespace std {
             // shouldn't need to swap the memory, since new_map is using the same
             // allocator as we are.
             buckets.swap(new_map.buckets);
-            locks.emulate(new_map.locks);
+            all_locks.swap(new_map.all_locks);
             return ok;
         }
 
@@ -2594,7 +2676,7 @@ namespace std {
             buckets.set_element(bucket_index, slot, partial,
                                 std::forward<K>(key),
                                 std::forward<Args>(val)...);
-            ++locks[lock_index(bucket_index)].elem_counter();
+            ++get_current_locks()[lock_index(bucket_index)].elem_counter();
         }
 
         template <typename K>
@@ -2652,9 +2734,9 @@ namespace std {
                 return table_position{0, 0, failure_under_expansion};
             } else if (st == ok) {
                 assert(LOCK_TYPE() == private_impl::LOCKING_INACTIVE() ||
-                       !locks[lock_index(guard.first())].try_lock(LOCK_TYPE()));
+                       !get_current_locks()[lock_index(guard.first())].try_lock(LOCK_TYPE()));
                 assert(LOCK_TYPE() == private_impl::LOCKING_INACTIVE() ||
-                       !locks[lock_index(guard.second())].try_lock(LOCK_TYPE()));
+                       !get_current_locks()[lock_index(guard.second())].try_lock(LOCK_TYPE()));
                 assert(!buckets[insert_bucket].occupied(insert_slot));
                 assert(insert_bucket == index_hash(hashpower(), hashvalue.hash) ||
                        insert_bucket == alt_index(hashpower(), hashvalue.partial,
@@ -2699,8 +2781,8 @@ namespace std {
 
         void del_from_bucket(const size_type bucket_index, const size_type slot) {
             buckets.erase_element(bucket_index, slot);
-            assert(locks[lock_index(bucket_index)].elem_counter() > 0);
-            --locks[lock_index(bucket_index)].elem_counter();
+            assert(get_current_locks()[lock_index(bucket_index)].elem_counter() > 0);
+            --get_current_locks()[lock_index(bucket_index)].elem_counter();
         }
 
         void minimum_load_factor(const double mlf) {
@@ -2724,10 +2806,10 @@ namespace std {
                 throw std::invalid_argument("maximum hashpower " + std::to_string(mhp) +
                                             " is less than current hashpower");
             }
-            maximum_hashpower_holder.store(mhp, std::memory_order_release);
+            maximum_hash_power_holder.store(mhp, std::memory_order_release);
         }
         size_type maximum_hashpower() {
-            return maximum_hashpower_holder.load(std::memory_order_acquire);
+            return maximum_hash_power_holder.load(std::memory_order_acquire);
         }
 
         double load_factor() const {
@@ -2736,6 +2818,7 @@ namespace std {
 
         size_type size() const {
             size_type s = 0;
+            auto& locks = get_current_locks();
             for (size_type i = 0; i < locks.size(); ++i) {
                 s += locks[i].elem_counter();
             }
@@ -2754,11 +2837,11 @@ namespace std {
         hasher hash;
         key_equal key_comparator;
         buckets_t buckets;
-        mutable locks_t locks;
+        mutable all_locks_t all_locks;
         expansion_lock_t expansion_lock;
 
         std::atomic<size_type> minimum_load_factor_holder;
-        std::atomic<size_type> maximum_hashpower_holder;
+        std::atomic<size_type> maximum_hash_power_holder;
 
         friend UnitTestInternalAccess;
     };

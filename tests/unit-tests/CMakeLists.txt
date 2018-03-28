@@ -4,7 +4,7 @@ add_executable(unit_tests
   test_heterogeneous_compare.cc
   test_iterator.cc
   test_noncopyable_types.cc
-#  test_resize.cc
+  test_resize.cc
   test_runner.cc
   test_user_exceptions.cc
   test_locked_table.cc

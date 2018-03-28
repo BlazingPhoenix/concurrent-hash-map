@@ -9,10 +9,10 @@ TEST_CASE("rehash empty table", "[resize]") {
   IntIntTable table(1);
   REQUIRE(UnitTestInternalAccess::hashpower(table) == 0);
 
-  table.lock_table().rehash(20);
+  table.get_unsynchronized_view().rehash(20);
   REQUIRE(UnitTestInternalAccess::hashpower(table) == 20);
 
-  table.lock_table().rehash(1);
+  table.get_unsynchronized_view().rehash(1);
   REQUIRE(UnitTestInternalAccess::hashpower(table) == 1);
 }
 /*
@@ -72,7 +72,7 @@ TEST_CASE("Resizing number of frees", "[resize]") {
                                       std::allocator<std::pair<const int, my_type>>>
             map(8);
         for (int i = 0; i < 9; ++i) {
-            map.insert(std::make_pair(i, val));
+            map.emplace(i, val);
         }
         // All of the items should be moved during resize to the new region of
         // memory. Then up to 8 of them can be moved to their new bucket.
@@ -111,13 +111,13 @@ TEST_CASE("Resize on non-relocatable type", "[resize]") {
     // change when we resize the buckets
     const size_t num_elems = 16;
     for (int i = 0; i < num_elems; ++i) {
-        map.insert(std::make_pair(i, 'a'));
+        map.emplace(i, 'a');
     }
     // Make sure each pointer actually points to its buffer
     NonRelocatableType value;
     std::array<char, 1024> ref;
     ref.fill('a');
-    auto lt = map.lock_table();
+    auto lt = map.get_unsynchronized_view();
     for (const auto &kvpair : lt) {
         REQUIRE(ref == kvpair.second.buffer);
         REQUIRE(kvpair.second.pointerToBuffer == kvpair.second.buffer.data());

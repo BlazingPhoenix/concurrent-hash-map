@@ -210,12 +210,12 @@ TEST_CASE("swap maps", "[constructor]") {
       REQUIRE(m1.size() == 1);
       REQUIRE(m1.hash_function().state == 40);
       REQUIRE(m1.key_eq().state == 50);
-      REQUIRE(m1.get_allocator().state == 60);
+      REQUIRE(m1.get_allocator().state == 30);
       
       REQUIRE(m2.size() == 1);
       REQUIRE(m2.hash_function().state == 10);
       REQUIRE(m2.key_eq().state == 20);
-      REQUIRE(m2.get_allocator().state == 30);
+      REQUIRE(m2.get_allocator().state == 60);
   }
   std::swap(map, map2);
 
@@ -226,12 +226,12 @@ TEST_CASE("swap maps", "[constructor]") {
       REQUIRE(m1.size() == 1);
       REQUIRE(m1.hash_function().state == 10);
       REQUIRE(m1.key_eq().state == 20);
-      REQUIRE(m1.get_allocator().state == 30);
+      REQUIRE(m1.get_allocator().state == 60);
       
       REQUIRE(m2.size() == 1);
       REQUIRE(m2.hash_function().state == 40);
       REQUIRE(m2.key_eq().state == 50);
-      REQUIRE(m2.get_allocator().state == 60);
+      REQUIRE(m2.get_allocator().state == 30);
   }
 }
 
