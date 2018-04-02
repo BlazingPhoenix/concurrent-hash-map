@@ -6,59 +6,48 @@
 #include <concurrent_hash_map/concurrent_hash_map.hpp>
 
 TEST_CASE("rehash empty table", "[resize]") {
-  IntIntTable table(1);
-  REQUIRE(UnitTestInternalAccess::hashpower(table) == 0);
+    int_int_table table(1);
+    REQUIRE(unit_test_internals_view::hashpower(table) == 0);
 
-  table.get_unsynchronized_view().rehash(20);
-  REQUIRE(UnitTestInternalAccess::hashpower(table) == 20);
+    table.get_unsynchronized_view().rehash(20);
+    REQUIRE(unit_test_internals_view::hashpower(table) == 20);
 
-  table.get_unsynchronized_view().rehash(1);
-  REQUIRE(UnitTestInternalAccess::hashpower(table) == 1);
+    table.get_unsynchronized_view().rehash(1);
+    REQUIRE(unit_test_internals_view::hashpower(table) == 1);
 }
-/*
-TEST_CASE("reserve empty table", "[resize]") {
-  IntIntTable table(1);
-  table.reserve(100);
-  REQUIRE(UnitTestInternalAccess::hashpower(table) == 5);
-
-  table.reserve(1);
-  REQUIRE(UnitTestInternalAccess::hashpower(table) == 0);
-
-  table.reserve(2);
-  REQUIRE(UnitTestInternalAccess::hashpower(table) == 0);
-}
-*/
 
 TEST_CASE("reserve calc", "[resize]") {
     const size_t slot_per_bucket = std::private_impl::DEFAULT_SLOTS_PER_BUCKET;
-    REQUIRE(UnitTestInternalAccess::reserve_calc<IntIntTable>(0) == 0);
-    REQUIRE(UnitTestInternalAccess::reserve_calc<IntIntTable>(
-                1 * slot_per_bucket) == 0);
-    
-    REQUIRE(UnitTestInternalAccess::reserve_calc<IntIntTable>(
-                2 * slot_per_bucket) == 1);
-    REQUIRE(UnitTestInternalAccess::reserve_calc<IntIntTable>(
-                3 * slot_per_bucket) == 2);
-    REQUIRE(UnitTestInternalAccess::reserve_calc<IntIntTable>(
-                4 * slot_per_bucket) == 2);
-    REQUIRE(UnitTestInternalAccess::reserve_calc<IntIntTable>(
-                2500000 * slot_per_bucket) == 22);
-    
-    REQUIRE(UnitTestInternalAccess::reserve_calc<IntIntTable>(
-                (1UL << 31) * slot_per_bucket) == 31);
-    REQUIRE(UnitTestInternalAccess::reserve_calc<IntIntTable>(
-                ((1UL << 31) + 1) * slot_per_bucket) == 32);
-    
-    REQUIRE(UnitTestInternalAccess::reserve_calc<IntIntTable>(
-                (1UL << 61) * slot_per_bucket) == 61);
-    REQUIRE(UnitTestInternalAccess::reserve_calc<IntIntTable>(
-                ((1ULL << 61) + 1) * slot_per_bucket) == 62);
+    REQUIRE(unit_test_internals_view::reserve_calc<int_int_table>(0) == 0);
+    REQUIRE(unit_test_internals_view::reserve_calc<int_int_table>(
+            1 * slot_per_bucket) == 0);
+
+    REQUIRE(unit_test_internals_view::reserve_calc<int_int_table>(
+            2 * slot_per_bucket) == 1);
+    REQUIRE(unit_test_internals_view::reserve_calc<int_int_table>(
+            3 * slot_per_bucket) == 2);
+    REQUIRE(unit_test_internals_view::reserve_calc<int_int_table>(
+            4 * slot_per_bucket) == 2);
+    REQUIRE(unit_test_internals_view::reserve_calc<int_int_table>(
+            2500000 * slot_per_bucket) == 22);
+
+    REQUIRE(unit_test_internals_view::reserve_calc<int_int_table>(
+            (1UL << 31) * slot_per_bucket) == 31);
+    REQUIRE(unit_test_internals_view::reserve_calc<int_int_table>(
+            ((1UL << 31) + 1) * slot_per_bucket) == 32);
+
+    REQUIRE(unit_test_internals_view::reserve_calc<int_int_table>(
+            (1UL << 61) * slot_per_bucket) == 61);
+    REQUIRE(unit_test_internals_view::reserve_calc<int_int_table>(
+            ((1ULL << 61) + 1) * slot_per_bucket) == 62);
 }
 
 struct my_type {
-  int x;
-  ~my_type() { ++num_deletes; }
-  static size_t num_deletes;
+    int x;
+
+    ~my_type() { ++num_deletes; }
+
+    static size_t num_deletes;
 };
 
 size_t my_type::num_deletes = 0;
@@ -69,8 +58,8 @@ TEST_CASE("Resizing number of frees", "[resize]") {
     {
         // Should allocate 2 buckets of 4 slots
         std::concurrent_unordered_map<int, my_type, std::hash<int>, std::equal_to<int>,
-                                      std::allocator<std::pair<const int, my_type>>>
-            map(8);
+                std::allocator<std::pair<const int, my_type>>>
+                map(8);
         for (int i = 0; i < 9; ++i) {
             map.emplace(i, val);
         }
@@ -84,29 +73,31 @@ TEST_CASE("Resizing number of frees", "[resize]") {
 }
 
 // Taken from https://github.com/facebook/folly/blob/master/folly/docs/Traits.md
-class NonRelocatableType {
+class non_relocatable_type {
 public:
-  std::array<char, 1024> buffer;
-  char *pointerToBuffer;
-  NonRelocatableType() : pointerToBuffer(buffer.data()) {}
-  NonRelocatableType(char c) : pointerToBuffer(buffer.data()) {
-    buffer.fill(c);
-  }
+    std::array<char, 1024> buffer;
+    char *pointerToBuffer;
 
-  NonRelocatableType(const NonRelocatableType &x) noexcept
-      : buffer(x.buffer), pointerToBuffer(buffer.data()) {}
+    non_relocatable_type() : pointerToBuffer(buffer.data()) {}
 
-  NonRelocatableType &operator=(const NonRelocatableType &x) {
-    buffer = x.buffer;
-    return *this;
-  }
+    non_relocatable_type(char c) : pointerToBuffer(buffer.data()) {
+        buffer.fill(c);
+    }
+
+    non_relocatable_type(const non_relocatable_type &x) noexcept
+            : buffer(x.buffer), pointerToBuffer(buffer.data()) {}
+
+    non_relocatable_type &operator=(const non_relocatable_type &x) {
+        buffer = x.buffer;
+        return *this;
+    }
 };
 
 TEST_CASE("Resize on non-relocatable type", "[resize]") {
-    std::concurrent_unordered_map<int, NonRelocatableType, std::hash<int>, std::equal_to<int>,
-                                  std::allocator<std::pair<const int, NonRelocatableType>>>
-        map(0);
-    REQUIRE(UnitTestInternalAccess::hashpower(map) == 0);
+    std::concurrent_unordered_map<int, non_relocatable_type, std::hash<int>, std::equal_to<int>,
+            std::allocator<std::pair<const int, non_relocatable_type>>>
+            map(0);
+    REQUIRE(unit_test_internals_view::hashpower(map) == 0);
     // Make it resize a few times to ensure the vector capacity has to actually
     // change when we resize the buckets
     const size_t num_elems = 16;
@@ -114,7 +105,7 @@ TEST_CASE("Resize on non-relocatable type", "[resize]") {
         map.emplace(i, 'a');
     }
     // Make sure each pointer actually points to its buffer
-    NonRelocatableType value;
+    non_relocatable_type value;
     std::array<char, 1024> ref;
     ref.fill('a');
     auto lt = map.get_unsynchronized_view();

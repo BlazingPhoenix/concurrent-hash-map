@@ -4,47 +4,47 @@
 
 #include "unit_test_util.hpp"
 
-namespace TestUserExceptions {
-    void maybeThrow(bool throwException) {
-      if (throwException) {
-        throw std::runtime_error("exception");
-      }
+namespace test_user_exceptions {
+    void maybe_throw(bool throw_exception) {
+        if (throw_exception) {
+            throw std::runtime_error("exception");
+        }
     }
 
-    bool constructorThrow, moveThrow, hashThrow, equalityThrow;
+    bool constructor_throw, move_throw, hash_throw, equality_throw;
 
-    class ExceptionInt {
+    class exception_int {
     public:
-        ExceptionInt() {
-          maybeThrow(constructorThrow);
-          val = 0;
+        exception_int() {
+            maybe_throw(constructor_throw);
+            val = 0;
         }
 
-        ExceptionInt(size_t x) {
-          maybeThrow(constructorThrow);
-          val = x;
+        exception_int(size_t x) {
+            maybe_throw(constructor_throw);
+            val = x;
         }
 
-        ExceptionInt(const ExceptionInt &i) {
-          maybeThrow(constructorThrow);
-          val = static_cast<size_t>(i);
+        exception_int(const exception_int &i) {
+            maybe_throw(constructor_throw);
+            val = static_cast<size_t>(i);
         }
 
-        ExceptionInt(ExceptionInt &&i) {
-          maybeThrow(constructorThrow || moveThrow);
-          val = static_cast<size_t>(i);
+        exception_int(exception_int &&i) {
+            maybe_throw(constructor_throw || move_throw);
+            val = static_cast<size_t>(i);
         }
 
-        ExceptionInt &operator=(const ExceptionInt &i) {
-          maybeThrow(constructorThrow);
-          val = static_cast<size_t>(i);
-          return *this;
+        exception_int &operator=(const exception_int &i) {
+            maybe_throw(constructor_throw);
+            val = static_cast<size_t>(i);
+            return *this;
         }
 
-        ExceptionInt &operator=(ExceptionInt &&i) {
-          maybeThrow(constructorThrow || moveThrow);
-          val = static_cast<size_t>(i);
-          return *this;
+        exception_int &operator=(exception_int &&i) {
+            maybe_throw(constructor_throw || move_throw);
+            val = static_cast<size_t>(i);
+            return *this;
         }
 
         operator size_t() const { return val; }
@@ -55,243 +55,112 @@ namespace TestUserExceptions {
 }
 
 namespace std {
-template <> struct hash<TestUserExceptions::ExceptionInt> {
-  size_t operator()(const TestUserExceptions::ExceptionInt &x) const {
-    TestUserExceptions::maybeThrow(TestUserExceptions::hashThrow);
-    return x;
-  }
-};
+    template<>
+    struct hash<test_user_exceptions::exception_int> {
+        size_t operator()(const test_user_exceptions::exception_int &x) const {
+            test_user_exceptions::maybe_throw(test_user_exceptions::hash_throw);
+            return x;
+        }
+    };
 
-template <> struct equal_to<TestUserExceptions::ExceptionInt> {
-  bool operator()(const TestUserExceptions::ExceptionInt &lhs, const TestUserExceptions::ExceptionInt &rhs) const {
-    TestUserExceptions::maybeThrow(TestUserExceptions::equalityThrow);
-    return static_cast<size_t>(lhs) == static_cast<size_t>(rhs);
-  }
-};
+    template<>
+    struct equal_to<test_user_exceptions::exception_int> {
+        bool operator()(const test_user_exceptions::exception_int &lhs,
+                        const test_user_exceptions::exception_int &rhs) const {
+            test_user_exceptions::maybe_throw(test_user_exceptions::equality_throw);
+            return static_cast<size_t>(lhs) == static_cast<size_t>(rhs);
+        }
+    };
 }
 
-typedef std::concurrent_unordered_map<TestUserExceptions::ExceptionInt, size_t, std::hash<TestUserExceptions::ExceptionInt>,
-                                      std::equal_to<TestUserExceptions::ExceptionInt>>
-    exceptionTable;
+typedef std::concurrent_unordered_map<test_user_exceptions::exception_int, size_t, std::hash<test_user_exceptions::exception_int>,
+        std::equal_to<test_user_exceptions::exception_int>>
+        exception_table;
 
-void checkIterTable(exceptionTable &tbl, size_t expectedSize) {
-  auto lockedTable = tbl.get_unsynchronized_view();
-  size_t actualSize = 0;
-  for (auto it = lockedTable.begin(); it != lockedTable.end(); ++it) {
-    ++actualSize;
-  }
-  REQUIRE(actualSize == expectedSize);
+void check_iter_table(exception_table &tbl, size_t expectedSize) {
+    auto lockedTable = tbl.get_unsynchronized_view();
+    size_t actual_size = 0;
+    for (auto it = lockedTable.begin(); it != lockedTable.end(); ++it) {
+        ++actual_size;
+    }
+    REQUIRE(actual_size == expectedSize);
 }
 
 TEST_CASE("user exceptions", "[user_exceptions]") {
-  TestUserExceptions::constructorThrow = TestUserExceptions::hashThrow = TestUserExceptions::equalityThrow =
-    TestUserExceptions::moveThrow = false;
-  // We don't use sub-sections because CATCH is not exactly thread-safe
+    test_user_exceptions::constructor_throw = test_user_exceptions::hash_throw = test_user_exceptions::equality_throw =
+    test_user_exceptions::move_throw = false;
+    // We don't use sub-sections because CATCH is not exactly thread-safe
 
-  // "find/contains"
-  {
-    exceptionTable tbl;
-    tbl.insert(std::make_pair(1, 1));
-    tbl.insert(std::make_pair(2, 2));
-    tbl.insert(std::make_pair(3, 3));
-    TestUserExceptions::hashThrow = true;
-    REQUIRE_THROWS_AS(tbl.find(3), std::runtime_error);
-    TestUserExceptions::hashThrow = false;
-    TestUserExceptions::equalityThrow = true;
-    REQUIRE_THROWS_AS(tbl.find(3), std::runtime_error);
-    TestUserExceptions::equalityThrow = false;
-    REQUIRE(tbl.find(3) == std::experimental::make_optional(3UL));
-    checkIterTable(tbl, 3);
-  }
-
-  // "insert"
-  {
-    exceptionTable tbl;
-    TestUserExceptions::constructorThrow = true;
-    REQUIRE_THROWS_AS(tbl.insert(std::make_pair(100, 100)), std::runtime_error);
-    TestUserExceptions::constructorThrow = false;
-    REQUIRE(tbl.insert(std::make_pair(100, 100)));
-    checkIterTable(tbl, 1);
-  }
-
-  // "erase"
-  {
-    exceptionTable tbl;
-    for (int i = 0; i < 10; ++i) {
-        tbl.insert(std::make_pair(i, i));
+    // "find/contains"
+    {
+        exception_table tbl;
+        tbl.insert(std::make_pair(1, 1));
+        tbl.insert(std::make_pair(2, 2));
+        tbl.insert(std::make_pair(3, 3));
+        test_user_exceptions::hash_throw = true;
+        REQUIRE_THROWS_AS(tbl.find(3), std::runtime_error);
+        test_user_exceptions::hash_throw = false;
+        test_user_exceptions::equality_throw = true;
+        REQUIRE_THROWS_AS(tbl.find(3), std::runtime_error);
+        test_user_exceptions::equality_throw = false;
+        REQUIRE(tbl.find(3) == std::experimental::make_optional(3UL));
+        check_iter_table(tbl, 3);
     }
-    TestUserExceptions::hashThrow = true;
-    REQUIRE_THROWS_AS(tbl.erase(5), std::runtime_error);
-    TestUserExceptions::hashThrow = false;
-    TestUserExceptions::equalityThrow = true;
-    REQUIRE_THROWS_AS(tbl.erase(5), std::runtime_error);
-    TestUserExceptions::equalityThrow = false;
-    REQUIRE(tbl.erase(5));
-    checkIterTable(tbl, 9);
-  }
 
-  // "update"
-  {
-    exceptionTable tbl;
-    tbl.insert(std::make_pair(9, 9));
-    tbl.insert(std::make_pair(10, 10));
-    TestUserExceptions::hashThrow = true;
-    REQUIRE_THROWS_AS(tbl.update(9, 10), std::runtime_error);
-    TestUserExceptions::hashThrow = false;
-    TestUserExceptions::equalityThrow = true;
-    REQUIRE_THROWS_AS(tbl.update(9, 10), std::runtime_error);
-    TestUserExceptions::equalityThrow = false;
-    REQUIRE(tbl.update(9, 10));
-    checkIterTable(tbl, 2);
-  }
-
-  // "update_fn"
-  {
-    exceptionTable tbl;
-    tbl.insert(std::make_pair(9, 9));
-    tbl.insert(std::make_pair(10, 10));
-    auto updater = [](size_t& val) { val++; };
-    TestUserExceptions::hashThrow = true;
-    REQUIRE_THROWS_AS(tbl.visit(9, updater), std::runtime_error);
-    TestUserExceptions::hashThrow = false;
-    TestUserExceptions::equalityThrow = true;
-    REQUIRE_THROWS_AS(tbl.visit(9, updater), std::runtime_error);
-    TestUserExceptions::equalityThrow = false;
-    REQUIRE(tbl.visit(9, updater));
-    checkIterTable(tbl, 2);
-  }
-
-  /*
-  // "upsert"
-  {
-    exceptionTable tbl;
-    tbl.insert(std::make_pair(9, 9));
-    auto updater = [](size_t& val) { val++; };
-    hashThrow = true;
-    REQUIRE_THROWS_AS(tbl.upsert(9, updater, 10), std::runtime_error);
-    hashThrow = false;
-    equalityThrow = true;
-    REQUIRE_THROWS_AS(tbl.upsert(9, updater, 10), std::runtime_error);
-    equalityThrow = false;
-    tbl.upsert(9, updater, 10);
-    constructorThrow = true;
-    REQUIRE_THROWS_AS(tbl.upsert(10, updater, 10), std::runtime_error);
-    constructorThrow = false;
-    tbl.upsert(10, updater, 10);
-    checkIterTable(tbl, 2);
-  }
-  */
-  /*
-  // rehash
-  {
-    exceptionTable tbl;
-    for (int i = 0; i < 10; ++i) {
-        tbl.insert(std::make_pair(i, i));
+    // "insert"
+    {
+        exception_table tbl;
+        test_user_exceptions::constructor_throw = true;
+        REQUIRE_THROWS_AS(tbl.insert(std::make_pair(100, 100)), std::runtime_error);
+        test_user_exceptions::constructor_throw = false;
+        REQUIRE(tbl.insert(std::make_pair(100, 100)));
+        check_iter_table(tbl, 1);
     }
-    size_t original_hashpower = tbl.hashpower();
-    size_t next_hashpower = original_hashpower + 1;
-    constructorThrow = true;
-    REQUIRE_THROWS_AS(tbl.rehash(next_hashpower), std::runtime_error);
-    constructorThrow = false;
-    REQUIRE(tbl.hashpower() == original_hashpower);
-    hashThrow = true;
-    REQUIRE_THROWS_AS(tbl.rehash(next_hashpower), std::runtime_error);
-    hashThrow = false;
-    REQUIRE(tbl.hashpower() == original_hashpower);
-    // This shouldn't throw, because the partial keys are different between
-    // the different hash values, which means they shouldn't be compared for
-    // actual equality.
-    equalityThrow = true;
-    REQUIRE(tbl.rehash(next_hashpower));
-    REQUIRE(tbl.hashpower() == next_hashpower);
-    equalityThrow = false;
-    checkIterTable(tbl, 10);
-  }
-  */
-  /*
-  // "reserve"
-  {
-    exceptionTable tbl;
-    for (int i = 0; i < 10; ++i) {
-      tbl.insert(i, i);
+
+    // "erase"
+    {
+        exception_table tbl;
+        for (int i = 0; i < 10; ++i) {
+            tbl.insert(std::make_pair(i, i));
+        }
+        test_user_exceptions::hash_throw = true;
+        REQUIRE_THROWS_AS(tbl.erase(5), std::runtime_error);
+        test_user_exceptions::hash_throw = false;
+        test_user_exceptions::equality_throw = true;
+        REQUIRE_THROWS_AS(tbl.erase(5), std::runtime_error);
+        test_user_exceptions::equality_throw = false;
+        REQUIRE(tbl.erase(5));
+        check_iter_table(tbl, 9);
     }
-    size_t original_hashpower = tbl.hashpower();
-    size_t next_hashpower = original_hashpower + 1;
-    size_t next_reserve = (1UL << next_hashpower) * tbl.slot_per_bucket();
-    constructorThrow = true;
-    REQUIRE_THROWS_AS(tbl.reserve(next_reserve), std::runtime_error);
-    constructorThrow = false;
-    REQUIRE(tbl.hashpower() == original_hashpower);
-    hashThrow = true;
-    REQUIRE_THROWS_AS(tbl.reserve(next_reserve), std::runtime_error);
-    hashThrow = false;
-    REQUIRE(tbl.hashpower() == original_hashpower);
-    // This shouldn't throw, because the partial keys are different between
-    // the different hash values, which means they shouldn't be compared for
-    // actual equality.
-    equalityThrow = true;
-    REQUIRE(tbl.reserve(next_reserve));
-    REQUIRE(tbl.hashpower() == next_hashpower);
-    checkIterTable(tbl, 10);
-  }
-  */
-  /*
-  // "insert resize"
-  {
-    exceptionTable tbl(1000);
-    REQUIRE(tbl.rehash(1));
-    // Fill up the entire table
-    for (size_t i = 0; i < exceptionTable::slot_per_bucket() * 2; ++i) {
-      tbl.insert(i * 2, 0);
+
+    // "update"
+    {
+        exception_table tbl;
+        tbl.insert(std::make_pair(9, 9));
+        tbl.insert(std::make_pair(10, 10));
+        test_user_exceptions::hash_throw = true;
+        REQUIRE_THROWS_AS(tbl.update(9, 10), std::runtime_error);
+        test_user_exceptions::hash_throw = false;
+        test_user_exceptions::equality_throw = true;
+        REQUIRE_THROWS_AS(tbl.update(9, 10), std::runtime_error);
+        test_user_exceptions::equality_throw = false;
+        REQUIRE(tbl.update(9, 10));
+        check_iter_table(tbl, 2);
     }
-    // Only throw on move, which should be triggered when we do a resize.
-    moveThrow = true;
-    REQUIRE_THROWS_AS(
-        tbl.insert((exceptionTable::slot_per_bucket() * 2) * 2, 0),
-        std::runtime_error);
-    moveThrow = false;
-    REQUIRE(tbl.insert((exceptionTable::slot_per_bucket() * 2) * 2, 0));
-    checkIterTable(tbl, exceptionTable::slot_per_bucket() * 2 + 1);
-  }
-  */
 
-  // "insert cuckoohash" -- broken?
-  // {
-  //     exceptionTable tbl(0);
-  //     REQUIRE(tbl.rehash(2));
-  //     size_t cuckooKey = 0;
-  //     size_t cuckooKeyHash = std::hash<ExceptionInt>()(cuckooKey);
-  //     size_t cuckooKeyIndex = UnitTestInternalAccess::index_hash<
-  //         exceptionTable>(tbl.hashpower(), cuckooKeyHash);
-  //     size_t cuckooKeyPartial = UnitTestInternalAccess::partial_key<
-  //         exceptionTable>(tbl.hashpower(), cuckooKeyHash);
-  //     size_t cuckooKeyAltIndex = UnitTestInternalAccess::alt_index<
-  //         exceptionTable>(tbl.hashpower(), cuckooKeyPartial, cuckooKeyIndex);
-
-  //     if (cuckooKeyIndex == cuckooKeyAltIndex) {
-  //         // Fill up one bucket with elements that have the same value as
-  //         // cuckooKeyIndex mod tbl.hashpower()
-  //         for (size_t i = 0; i < exceptionTable::slot_per_bucket; ++i) {
-  //             tbl.insert(tbl.hashpower() * (i + 1) + cuckooKeyIndex, 0);
-  //         }
-  //     } else {
-  //         // Fill up one bucket on index cuckooKeyIndex, and another bucket
-  //         on
-  //         // cuckooKeyAlt
-  //         for (size_t i = 0; i < exceptionTable::slot_per_bucket; ++i) {
-  //             tbl.insert(tbl.hashpower() * (i + 1) + cuckooKeyIndex, 0);
-  //             tbl.insert(tbl.hashpower() * (i + 1) + cuckooKeyAltIndex, 0);
-  //         }
-  //     }
-
-  //     // Now inserting cuckooKey should trigger a cuckoo hash, which moves
-  //     // elements around
-  //     moveThrow = true;
-  //     REQUIRE_THROWS_AS(tbl.insert(cuckooKey, 0), std::runtime_error);
-  //     moveThrow = false;
-  //     REQUIRE(tbl.insert(cuckooKey, 0));
-  //     checkIterTable(tbl,
-  //                    exceptionTable::slot_per_bucket * (
-  //                        cuckooKeyIndex == cuckooKeyAltIndex ? 1 : 2) + 1);
-  // }
+    // "update_fn"
+    {
+        exception_table tbl;
+        tbl.insert(std::make_pair(9, 9));
+        tbl.insert(std::make_pair(10, 10));
+        auto updater = [](size_t &val) { val++; };
+        test_user_exceptions::hash_throw = true;
+        REQUIRE_THROWS_AS(tbl.visit(9, updater), std::runtime_error);
+        test_user_exceptions::hash_throw = false;
+        test_user_exceptions::equality_throw = true;
+        REQUIRE_THROWS_AS(tbl.visit(9, updater), std::runtime_error);
+        test_user_exceptions::equality_throw = false;
+        REQUIRE(tbl.visit(9, updater));
+        check_iter_table(tbl, 2);
+    }
 }

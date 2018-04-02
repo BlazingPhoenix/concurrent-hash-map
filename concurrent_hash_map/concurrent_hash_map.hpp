@@ -15,7 +15,7 @@
 #include <vector>
 #include <experimental/optional>
 
-class UnitTestInternalAccess;
+class unit_test_internals_view;
 
 namespace std {
     namespace private_impl {
@@ -2843,6 +2843,6 @@ namespace std {
         std::atomic<size_type> minimum_load_factor_holder;
         std::atomic<size_type> maximum_hash_power_holder;
 
-        friend UnitTestInternalAccess;
+        friend unit_test_internals_view;
     };
 }
