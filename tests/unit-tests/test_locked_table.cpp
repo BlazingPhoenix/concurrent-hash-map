@@ -5,7 +5,7 @@
 
 #include <catch.hpp>
 
-#include "unit_test_util.hh"
+#include "unit_test_util.hpp"
 
 TEST_CASE("locked_table typedefs", "[locked_table]") {
   using Tbl = IntIntTable;

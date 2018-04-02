@@ -3,7 +3,7 @@
 #include <string>
 #include <utility>
 
-#include "unit_test_util.hh"
+#include "unit_test_util.hpp"
 
 using Tbl = UniquePtrTable<int>;
 using Uptr = std::unique_ptr<int>;

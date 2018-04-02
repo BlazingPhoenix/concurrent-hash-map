@@ -8,7 +8,7 @@
 #include <type_traits>
 #include <utility>
 
-#include "unit_test_util.hh"
+#include "unit_test_util.hpp"
 
 TEST_CASE("iterator types", "[iterator]") {
   using Ltbl = IntIntTable::unsynchronized_view;

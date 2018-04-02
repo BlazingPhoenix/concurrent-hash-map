@@ -2,7 +2,7 @@
 
 #include <catch.hpp>
 
-#include "unit_test_util.hh"
+#include "unit_test_util.hpp"
 #include <concurrent_hash_map/concurrent_hash_map.hpp>
 
 TEST_CASE("rehash empty table", "[resize]") {

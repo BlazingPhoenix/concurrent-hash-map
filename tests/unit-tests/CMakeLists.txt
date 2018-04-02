@@ -1,16 +1,16 @@
 add_executable(unit_tests
-  test_constructor.cc
-  test_hash_properties.cc
-  test_heterogeneous_compare.cc
-  test_iterator.cc
-  test_noncopyable_types.cc
-  test_resize.cc
-  test_runner.cc
-  test_user_exceptions.cc
-  test_locked_table.cc
-  test_libcuckoo_bucket_container.cc
-  unit_test_util.cc
-  unit_test_util.hh
+        test_constructor.cpp
+        test_hash_properties.cpp
+        test_heterogeneous_compare.cpp
+        test_iterator.cpp
+        test_noncopyable_types.cpp
+        test_resize.cpp
+        test_runner.cpp
+        test_user_exceptions.cpp
+        test_locked_table.cpp
+        test_libcuckoo_bucket_container.cpp
+        unit_test_util.cpp
+        unit_test_util.hpp
 )
 
 target_link_libraries(unit_tests

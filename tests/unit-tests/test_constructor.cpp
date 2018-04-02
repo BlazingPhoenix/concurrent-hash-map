@@ -4,7 +4,7 @@
 #include <cmath>
 #include <stdexcept>
 
-#include "unit_test_util.hh"
+#include "unit_test_util.hpp"
 #include <concurrent_hash_map/concurrent_hash_map.hpp>
 
 using IntIntTable = std::concurrent_unordered_map<int, int>;
@@ -134,24 +134,6 @@ TEST_CASE("range constructor", "[constructor]") {
       REQUIRE(map.find(i).value() == i + 1);
   }
 }
-/*
-TEST_CASE("copy constructor", "[constructor]") {
-  tbl_t map(0, StatefulHash(10), StatefulKeyEqual(20), alloc_t(30));
-  REQUIRE(map.get_allocator().state == 30);
-  tbl_t map2(map);
-  REQUIRE(map2.hash_function().state == 10);
-  REQUIRE(map2.key_eq().state == 20);
-  REQUIRE(map2.get_allocator().state == 0);
-}
-
-TEST_CASE("copy constructor other allocator", "[constructor]") {
-  tbl_t map(0, StatefulHash(10), StatefulKeyEqual(20), alloc_t(30));
-  tbl_t map2(map, map.get_allocator());
-  REQUIRE(map2.hash_function().state == 10);
-  REQUIRE(map2.key_eq().state == 20);
-  REQUIRE(map2.get_allocator().state == 30);
-}
-*/
 
 TEST_CASE("move constructor", "[constructor]") {
   tbl_t map(10, StatefulHash(10), StatefulKeyEqual(20), alloc_t(30));
@@ -166,26 +148,6 @@ TEST_CASE("move constructor", "[constructor]") {
   REQUIRE(m2.get_allocator().state == 30);
 } 
 
-/*
-
-TEST_CASE("move constructor different allocator", "[constructor]") {
-  tbl_t map(10, StatefulHash(10), StatefulKeyEqual(20), alloc_t(30));
-  map.insert(std::make_pair(10, 10));
-  tbl_t map2(std::move(map), alloc_t(40));
-  const auto& m1 = map.lock_table();
-  const auto& m2 = map2.get_unsynchronized_view();
-
-  REQUIRE(m1.size() == 1);
-  REQUIRE(m1.hash_function().state == 10);
-  REQUIRE(m1.key_eq().state == 20);
-  REQUIRE(m1.get_allocator().state == 30);
-
-  REQUIRE(m2.size() == 1);
-  REQUIRE(m2.hash_function().state == 10);
-  REQUIRE(m2.key_eq().state == 20);
-  REQUIRE(m2.get_allocator().state == 40);
-}
-*/
 TEST_CASE("initializer list constructor", "[constructor]") {
   tbl_t map({{1, 2}, {3, 4}, {5, 6}}, 3, StatefulHash(10), StatefulKeyEqual(20),
             alloc_t(30));
@@ -234,26 +196,6 @@ TEST_CASE("swap maps", "[constructor]") {
       REQUIRE(m2.get_allocator().state == 30);
   }
 }
-
-/*
-TEST_CASE("copy assign different allocators", "[constructor]") {
-  tbl_t map({{1, 2}}, 1, StatefulHash(10), StatefulKeyEqual(20), alloc_t(30));
-  tbl_t map2({{3, 4}}, 1, StatefulHash(40), StatefulKeyEqual(50), alloc_t(60));
-
-  map = map2;
-  REQUIRE(map.size() == 1);
-  REQUIRE(map.find(3) == 4);
-  REQUIRE(map.hash_function().state == 40);
-  REQUIRE(map.key_eq().state == 50);
-  REQUIRE(map.get_allocator().state == 30);
-
-  REQUIRE(map2.size() == 1);
-  REQUIRE(map2.hash_function().state == 40);
-  REQUIRE(map2.key_eq().state == 50);
-  REQUIRE(map2.get_allocator().state == 60);
-}
-*/
-
 
 TEST_CASE("move assign different allocators", "[constructor]") {
   tbl_t map({{1, 2}}, 1, StatefulHash(10), StatefulKeyEqual(20), alloc_t(30));

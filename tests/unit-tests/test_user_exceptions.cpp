@@ -2,7 +2,7 @@
 
 #include <stdexcept>
 
-#include "unit_test_util.hh"
+#include "unit_test_util.hpp"
 
 namespace TestUserExceptions {
     void maybeThrow(bool throwException) {

@@ -1,6 +1,6 @@
 #include <catch.hpp>
 
-#include "unit_test_util.hh"
+#include "unit_test_util.hpp"
 #include <concurrent_hash_map/concurrent_hash_map.hpp>
 
 // Checks that the alt index function returns a different bucket, and can

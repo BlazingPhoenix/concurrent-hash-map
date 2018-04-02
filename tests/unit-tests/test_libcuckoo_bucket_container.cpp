@@ -6,7 +6,7 @@
 #include <type_traits>
 #include <utility>
 
-#include "unit_test_util.hh"
+#include "unit_test_util.hpp"
 #include <iostream>
 
 template <bool PROPAGATE_COPY_ASSIGNMENT = true,
