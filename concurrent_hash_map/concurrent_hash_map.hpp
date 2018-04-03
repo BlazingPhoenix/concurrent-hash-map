@@ -1837,7 +1837,6 @@ namespace std {
         }
 
     private:
-        using expansion_lock_t = std::mutex;
         template <typename U>
         using rebind_alloc =
         typename std::allocator_traits<allocator_type>::template rebind_alloc<U>;
@@ -2481,13 +2480,13 @@ namespace std {
                 return cuckoo_expand_simple<LOCK_TYPE, AUTO_RESIZE>(current_hp + 1);
             }
             const size_type new_hp = current_hp + 1;
-            std::lock_guard<expansion_lock_t> l(expansion_lock);
+            auto unlocker = snapshot_and_lock_all<LOCK_TYPE>();
+
             auto st = check_resize_validity<AUTO_RESIZE>(current_hp, new_hp);
             if (st != ok) {
                 return st;
             }
 
-            auto unlocker = snapshot_and_lock_all<LOCK_TYPE>();
             buckets_t new_buckets(new_hp, get_allocator());
 
             // We gradually unlock the new table, by processing each of the buckets
@@ -2863,9 +2862,11 @@ namespace std {
 
         size_type size() const {
             size_type s = 0;
-            auto& locks = get_current_locks();
-            for (size_type i = 0; i < locks.size(); ++i) {
-                s += locks[i].elem_counter();
+            if (!all_locks.empty()) {
+                auto &locks = get_current_locks();
+                for (size_type i = 0; i < locks.size(); ++i) {
+                    s += locks[i].elem_counter();
+                }
             }
             return s;
         }
@@ -2883,7 +2884,6 @@ namespace std {
         key_equal key_comparator;
         buckets_t buckets;
         mutable all_locks_t all_locks;
-        expansion_lock_t expansion_lock;
 
         std::atomic<size_type> minimum_load_factor_holder;
         std::atomic<size_type> maximum_hash_power_holder;

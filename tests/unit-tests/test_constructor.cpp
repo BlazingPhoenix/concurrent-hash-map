@@ -11,7 +11,7 @@ using int_int_table = std::concurrent_unordered_map<int, int>;
 
 TEST_CASE("default size", "[constructor]") {
     int_int_table t;
-    const auto &tbl = t.make_unordered_map_view();
+    const auto& tbl = t.make_unordered_map_view();
     REQUIRE(tbl.size() == 0);
     REQUIRE(tbl.empty());
     REQUIRE(tbl.bucket_count() == 1UL << unit_test_internals_view::hashpower(t));
@@ -149,8 +149,8 @@ TEST_CASE("move constructor", "[constructor]") {
     tbl_t map(10, StatefulHash(10), StatefulKeyEqual(20), alloc_t(30));
     map.insert(std::make_pair(10, 10));
     tbl_t map2(std::move(map));
-    const auto &m1 = map.make_unordered_map_view();
-    const auto &m2 = map2.make_unordered_map_view();
+    const auto& m1 = map.make_unordered_map_view();
+    const auto& m2 = map2.make_unordered_map_view();
     REQUIRE(m1.size() == 0);
     REQUIRE(m2.size() == 1);
     REQUIRE(m2.hash_function().state == 10);
