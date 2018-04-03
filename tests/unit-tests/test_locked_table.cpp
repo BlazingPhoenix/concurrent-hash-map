@@ -9,7 +9,7 @@
 
 TEST_CASE("locked_table typedefs", "[locked_table]") {
     using tbl = int_int_table;
-    using ltbl = tbl::unsynchronized_view;
+    using ltbl = tbl::unordered_map_view;
     const bool key_type = std::is_same<tbl::key_type, ltbl::key_type>::value;
     const bool mapped_type =
             std::is_same<tbl::mapped_type, ltbl::mapped_type>::value;
@@ -33,21 +33,21 @@ TEST_CASE("locked_table move", "[locked_table]") {
     int_int_table tbl;
 
     SECTION("move constructor") {
-        auto lt = tbl.get_unsynchronized_view();
+        auto lt = tbl.make_unordered_map_view();
         auto lt2(std::move(lt));
 //    REQUIRE(!lt.is_active());
 //    REQUIRE(lt2.is_active());
     }
 
     SECTION("move assignment") {
-        auto lt = tbl.get_unsynchronized_view();
+        auto lt = tbl.make_unordered_map_view();
         auto lt2 = std::move(lt);
 //    REQUIRE(!lt.is_active());
 //    REQUIRE(lt2.is_active());
     }
 
     SECTION("iterators compare after table is moved") {
-        auto lt1 = tbl.get_unsynchronized_view();
+        auto lt1 = tbl.make_unordered_map_view();
         auto it1 = lt1.begin();
         auto it2 = lt1.begin();
         REQUIRE(it1 == it2);
@@ -59,7 +59,7 @@ TEST_CASE("locked_table move", "[locked_table]") {
 TEST_CASE("locked_table info", "[locked_table]") {
     int_int_table tbl;
     tbl.insert(std::make_pair(10, 10));
-    auto lt = tbl.get_unsynchronized_view();
+    auto lt = tbl.make_unordered_map_view();
 
     // We should still be able to call table info operations on the
     // cuckoohash_map instance, because they shouldn't take locks.
@@ -71,7 +71,7 @@ TEST_CASE("locked_table info", "[locked_table]") {
 TEST_CASE("locked_table clear", "[locked_table]") {
     int_int_table tbl;
     tbl.insert(std::make_pair(10, 10));
-    auto lt = tbl.get_unsynchronized_view();
+    auto lt = tbl.make_unordered_map_view();
     REQUIRE(lt.size() == 1);
     lt.clear();
     REQUIRE(lt.size() == 0);
@@ -83,7 +83,7 @@ TEST_CASE("locked_table insert duplicate", "[locked_table]") {
     int_int_table tbl;
     tbl.insert(std::make_pair(10, 10));
     {
-        auto lt = tbl.get_unsynchronized_view();
+        auto lt = tbl.make_unordered_map_view();
         auto result = lt.insert(std::make_pair(10, 20));
         REQUIRE(result.first->first == 10);
         REQUIRE(result.first->second == 10);
@@ -97,7 +97,7 @@ TEST_CASE("locked_table insert new key", "[locked_table]") {
     int_int_table tbl;
     tbl.insert(std::make_pair(10, 10));
     {
-        auto lt = tbl.get_unsynchronized_view();
+        auto lt = tbl.make_unordered_map_view();
         auto result = lt.insert(std::make_pair(20, 20));
         REQUIRE(result.first->first == 20);
         REQUIRE(result.first->second == 20);
@@ -112,7 +112,7 @@ TEST_CASE("locked_table insert lifetime", "[locked_table]") {
     unique_ptr_table<int> tbl;
 
     SECTION("Successful insert") {
-        auto lt = tbl.get_unsynchronized_view();
+        auto lt = tbl.make_unordered_map_view();
         std::unique_ptr<int> key(new int(20));
         std::unique_ptr<int> value(new int(20));
 
@@ -127,7 +127,7 @@ TEST_CASE("locked_table insert lifetime", "[locked_table]") {
 
     SECTION("Unsuccessful insert") {
         tbl.emplace(std::unique_ptr<int>(new int(20)), std::unique_ptr<int>(new int(20)));
-        auto lt = tbl.get_unsynchronized_view();
+        auto lt = tbl.make_unordered_map_view();
         std::unique_ptr<int> key(new int(20));
         std::unique_ptr<int> value(new int(30));
         unique_ptr_table<int>::value_type val(std::move(key), std::move(value));
@@ -145,10 +145,10 @@ TEST_CASE("locked_table erase", "[locked_table]") {
     for (int i = 0; i < 5; ++i) {
         tbl.insert(std::make_pair(i, i));
     }
-    using lt_t = int_int_table::unsynchronized_view;
+    using lt_t = int_int_table::unordered_map_view;
 
     SECTION("simple erase") {
-        auto lt = tbl.get_unsynchronized_view();
+        auto lt = tbl.make_unordered_map_view();
         lt_t::const_iterator const_it;
         const_it = lt.find(0);
         REQUIRE(const_it != lt.end());
@@ -170,7 +170,7 @@ TEST_CASE("locked_table erase", "[locked_table]") {
     }
 
     SECTION("erase doesn't ruin this iterator") {
-        auto lt = tbl.get_unsynchronized_view();
+        auto lt = tbl.make_unordered_map_view();
         auto it = lt.begin();
         auto next = it;
         ++next;
@@ -183,7 +183,7 @@ TEST_CASE("locked_table erase", "[locked_table]") {
     }
 
     SECTION("erase doesn't ruin other iterators") {
-        auto lt = tbl.get_unsynchronized_view();
+        auto lt = tbl.make_unordered_map_view();
         auto it0 = lt.find(0);
         auto it1 = lt.find(1);
         auto it2 = lt.find(2);
@@ -205,8 +205,8 @@ TEST_CASE("locked_table erase", "[locked_table]") {
 
 TEST_CASE("locked_table find", "[locked_table]") {
     int_int_table tbl;
-    using lt_t = int_int_table::unsynchronized_view;
-    auto lt = tbl.get_unsynchronized_view();
+    using lt_t = int_int_table::unordered_map_view;
+    auto lt = tbl.make_unordered_map_view();
     for (int i = 0; i < 10; ++i) {
         REQUIRE(lt.insert(std::make_pair(i, i)).second);
     }
@@ -240,14 +240,14 @@ TEST_CASE("locked_table find", "[locked_table]") {
 
 TEST_CASE("locked_table at", "[locked_table]") {
     int_int_table tbl;
-    auto lt = tbl.get_unsynchronized_view();
+    auto lt = tbl.make_unordered_map_view();
     for (int i = 0; i < 10; ++i) {
         REQUIRE(lt.insert(std::make_pair(i, i)).second);
     }
     for (int i = 0; i < 10; ++i) {
         int &val = lt.at(i);
         const int &const_val =
-                const_cast<const int_int_table::unsynchronized_view &>(lt).at(i);
+                const_cast<const int_int_table::unordered_map_view &>(lt).at(i);
         REQUIRE(val == i);
         REQUIRE(const_val == i);
         ++val;
@@ -260,7 +260,7 @@ TEST_CASE("locked_table at", "[locked_table]") {
 
 TEST_CASE("locked_table operator[]", "[locked_table]") {
     int_int_table tbl;
-    auto lt = tbl.get_unsynchronized_view();
+    auto lt = tbl.make_unordered_map_view();
     for (int i = 0; i < 10; ++i) {
         REQUIRE(lt.insert(std::make_pair(i, i)).second);
     }
@@ -278,7 +278,7 @@ TEST_CASE("locked_table operator[]", "[locked_table]") {
 
 TEST_CASE("locked_table count", "[locked_table]") {
     int_int_table tbl;
-    auto lt = tbl.get_unsynchronized_view();
+    auto lt = tbl.make_unordered_map_view();
     for (int i = 0; i < 10; ++i) {
         REQUIRE(lt.insert(std::make_pair(i, i)).second);
     }
@@ -290,8 +290,8 @@ TEST_CASE("locked_table count", "[locked_table]") {
 
 TEST_CASE("locked_table equal_range", "[locked_table]") {
     int_int_table tbl;
-    using lt_t = int_int_table::unsynchronized_view;
-    auto lt = tbl.get_unsynchronized_view();
+    using lt_t = int_int_table::unordered_map_view;
+    auto lt = tbl.make_unordered_map_view();
     for (int i = 0; i < 10; ++i) {
         REQUIRE(lt.insert(std::make_pair(i, i)).second);
     }
@@ -311,25 +311,25 @@ TEST_CASE("locked_table equal_range", "[locked_table]") {
 
 TEST_CASE("locked_table equality", "[locked_table]") {
     int_int_table tbl1(40);
-    auto lt1 = tbl1.get_unsynchronized_view();
+    auto lt1 = tbl1.make_unordered_map_view();
     for (int i = 0; i < 10; ++i) {
         lt1.insert(std::make_pair(i, i));
     }
 
     int_int_table tbl2(30);
-    auto lt2 = tbl2.get_unsynchronized_view();
+    auto lt2 = tbl2.make_unordered_map_view();
     for (int i = 0; i < 10; ++i) {
         lt2.insert(std::make_pair(i, i));
     }
 
     int_int_table tbl3(30);
-    auto lt3 = tbl3.get_unsynchronized_view();
+    auto lt3 = tbl3.make_unordered_map_view();
     for (int i = 0; i < 10; ++i) {
         lt3.insert(std::make_pair(i, i + 1));
     }
 
     int_int_table tbl4(40);
-    auto lt4 = tbl4.get_unsynchronized_view();
+    auto lt4 = tbl4.make_unordered_map_view();
     for (int i = 0; i < 10; ++i) {
         lt4.insert(std::make_pair(i + 1, i));
     }
@@ -358,7 +358,7 @@ void check_all_locks_taken(Table &tbl) {
 
 TEST_CASE("locked table holds locks after resize", "[locked table]") {
     int_int_table tbl(4);
-    auto lt = tbl.get_unsynchronized_view();
+    auto lt = tbl.make_unordered_map_view();
     //TODO: FIXME add a method with locked view
     //  check_all_locks_taken(tbl);
 

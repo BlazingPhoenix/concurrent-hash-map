@@ -11,7 +11,7 @@
 #include "unit_test_util.hpp"
 
 TEST_CASE("iterator types", "[iterator]") {
-    using Ltbl = int_int_table::unsynchronized_view;
+    using Ltbl = int_int_table::unordered_map_view;
     using It = Ltbl::iterator;
     using ConstIt = Ltbl::const_iterator;
 
@@ -53,7 +53,7 @@ TEST_CASE("iterator types", "[iterator]") {
 TEST_CASE("empty table iteration", "[iterator]") {
     int_int_table table;
     {
-        auto lt = table.get_unsynchronized_view();
+        auto lt = table.make_unordered_map_view();
         REQUIRE(lt.begin() == lt.begin());
         REQUIRE(lt.begin() == lt.end());
 
@@ -72,7 +72,7 @@ TEST_CASE("iterator walkthrough", "[iterator]") {
     }
 
     SECTION("forward postfix walkthrough") {
-        auto lt = table.get_unsynchronized_view();
+        auto lt = table.make_unordered_map_view();
         auto it = lt.cbegin();
         for (size_t i = 0; i < lt.size(); ++i) {
             REQUIRE((*it).first == (*it).second);
@@ -84,7 +84,7 @@ TEST_CASE("iterator walkthrough", "[iterator]") {
     }
 
     SECTION("forward prefix walkthrough") {
-        auto lt = table.get_unsynchronized_view();
+        auto lt = table.make_unordered_map_view();
         auto it = lt.cbegin();
         for (size_t i = 0; i < lt.size(); ++i) {
             REQUIRE((*it).first == (*it).second);
@@ -95,7 +95,7 @@ TEST_CASE("iterator walkthrough", "[iterator]") {
     }
 
     SECTION("backwards postfix walkthrough") {
-        auto lt = table.get_unsynchronized_view();
+        auto lt = table.make_unordered_map_view();
         auto it = lt.cend();
         for (size_t i = 0; i < lt.size(); ++i) {
             auto old_it = it;
@@ -107,7 +107,7 @@ TEST_CASE("iterator walkthrough", "[iterator]") {
     }
 
     SECTION("backwards prefix walkthrough") {
-        auto lt = table.get_unsynchronized_view();
+        auto lt = table.make_unordered_map_view();
         auto it = lt.cend();
         for (size_t i = 0; i < lt.size(); ++i) {
             --it;
@@ -118,7 +118,7 @@ TEST_CASE("iterator walkthrough", "[iterator]") {
     }
 
     SECTION("walkthrough works after move") {
-        auto lt = table.get_unsynchronized_view();
+        auto lt = table.make_unordered_map_view();
         auto it = lt.cend();
         auto lt2 = std::move(lt);
         for (size_t i = 0; i < lt.size(); ++i) {
@@ -136,7 +136,7 @@ TEST_CASE("iterator modification", "[iterator]") {
         table.insert(std::make_pair(i, i));
     }
 
-    auto lt = table.get_unsynchronized_view();
+    auto lt = table.make_unordered_map_view();
     for (auto it = lt.begin(); it != lt.end(); ++it) {
         it->second = it->second + 1;
     }
@@ -154,12 +154,12 @@ TEST_CASE("Cast iterator to const iterator", "[iterator]") {
     for (int i = 0; i < 10; ++i) {
         table.insert(std::make_pair(i, i));
     }
-    auto lt = table.get_unsynchronized_view();
-    for (int_int_table::unsynchronized_view::iterator it = lt.begin(); it != lt.end();
+    auto lt = table.make_unordered_map_view();
+    for (int_int_table::unordered_map_view::iterator it = lt.begin(); it != lt.end();
          ++it) {
         REQUIRE(it->first == it->second);
         it->second++;
-        int_int_table::unsynchronized_view::const_iterator const_it = it;
+        int_int_table::unordered_map_view::const_iterator const_it = it;
         REQUIRE(it->first + 1 == it->second);
     }
 }

@@ -78,7 +78,7 @@ typedef std::concurrent_unordered_map<test_user_exceptions::exception_int, size_
         exception_table;
 
 void check_iter_table(exception_table &tbl, size_t expectedSize) {
-    auto lockedTable = tbl.get_unsynchronized_view();
+    auto lockedTable = tbl.make_unordered_map_view();
     size_t actual_size = 0;
     for (auto it = lockedTable.begin(); it != lockedTable.end(); ++it) {
         ++actual_size;

@@ -801,10 +801,15 @@ namespace std {
                                                          Allocator, partial_t,
                                                          private_impl::DEFAULT_SLOTS_PER_BUCKET>;
         using bucket = typename buckets_t::bucket;
+
+        template <typename LOCK_TYPE>
+        class all_buckets_guard;
+
     public:
 
-        class unsynchronized_view {
+        class unordered_map_view {
             concurrent_unordered_map<Key, Value, Hasher, Equality, Allocator>& delegate;
+            all_buckets_guard<std::private_impl::LOCKING_ACTIVE> guard;
 
         public:
             // types:
@@ -824,10 +829,10 @@ namespace std {
 
             class const_local_iterator {
             public:
-                using difference_type = unsynchronized_view::difference_type;
-                using value_type = unsynchronized_view::value_type;
-                using pointer = unsynchronized_view::const_pointer;
-                using reference = unsynchronized_view::const_reference;
+                using difference_type = unordered_map_view::difference_type;
+                using value_type = unordered_map_view::value_type;
+                using pointer = unordered_map_view::const_pointer;
+                using reference = unordered_map_view::const_reference;
                 using iterator_category = std::bidirectional_iterator_tag;
 
                 const_local_iterator() = default;
@@ -901,13 +906,13 @@ namespace std {
                 bucket* data;
                 size_type slot;
                 friend class bucket_iterator;
-                friend class unsynchronized_view;
+                friend class unordered_map_view;
             };
 
             class local_iterator : public const_local_iterator {
             public:
-                using pointer = unsynchronized_view::pointer;
-                using reference = unsynchronized_view::reference;
+                using pointer = unordered_map_view::pointer;
+                using reference = unordered_map_view::reference;
 
                 local_iterator() {}
 
@@ -973,15 +978,15 @@ namespace std {
                 }
 
                 friend class bucket_iterator;
-                friend class unsynchronized_view;
+                friend class unordered_map_view;
             };
 
             class const_iterator {
             public:
-                using difference_type = unsynchronized_view::difference_type;
-                using value_type = unsynchronized_view::value_type;
-                using pointer = unsynchronized_view::const_pointer;
-                using reference = unsynchronized_view::const_reference;
+                using difference_type = unordered_map_view::difference_type;
+                using value_type = unordered_map_view::value_type;
+                using pointer = unordered_map_view::const_pointer;
+                using reference = unordered_map_view::const_reference;
                 using iterator_category = std::bidirectional_iterator_tag;
 
                 const_iterator() {}
@@ -1077,17 +1082,17 @@ namespace std {
                 buckets_t* buckets;
                 size_type bucket_index;
                 local_iterator bucket_position;
-                friend class unsynchronized_view;
+                friend class unordered_map_view;
             };
 
             class iterator : public const_iterator {
             public:
-                using difference_type = unsynchronized_view::difference_type;
-                using value_type = unsynchronized_view::value_type;
-                using pointer = unsynchronized_view::pointer;
-                using const_pointer = unsynchronized_view::const_pointer;
-                using reference = unsynchronized_view::reference;
-                using const_reference = unsynchronized_view::const_reference;
+                using difference_type = unordered_map_view::difference_type;
+                using value_type = unordered_map_view::value_type;
+                using pointer = unordered_map_view::pointer;
+                using const_pointer = unordered_map_view::const_pointer;
+                using reference = unordered_map_view::reference;
+                using const_reference = unordered_map_view::const_reference;
                 using iterator_category = std::bidirectional_iterator_tag;
 
                 iterator() {}
@@ -1148,16 +1153,21 @@ namespace std {
                     return local_iterator::end(bucket);
                 }
 
-                friend class unsynchronized_view;
+                friend class unordered_map_view;
             };
 
             // construct/copy/destroy:
-            unsynchronized_view() = delete;
-            unsynchronized_view(concurrent_unordered_map<Key, Value, Hasher, Equality, Allocator>& delegate)
+            unordered_map_view() = delete;
+            unordered_map_view(concurrent_unordered_map<Key, Value, Hasher, Equality, Allocator>& delegate)
                 : delegate(delegate)
                 {
                 }
-            ~unsynchronized_view() = default;
+            unordered_map_view(concurrent_unordered_map<Key, Value, Hasher, Equality, Allocator>& delegate,
+                               all_buckets_guard<std::private_impl::LOCKING_ACTIVE>&& guard)
+                    : delegate(delegate)
+                    , guard(std::forward<all_buckets_guard<std::private_impl::LOCKING_ACTIVE>>(guard))
+            {
+            }
 
             // iterators:
             iterator begin() noexcept {
@@ -1192,7 +1202,7 @@ namespace std {
                 return 1U << delegate.buckets->maximum_hashpower();
             }
 
-            bool operator==(const unsynchronized_view& other) const {
+            bool operator==(const unordered_map_view& other) const {
                 if (size() != other.size()) {
                     return false;
                 }
@@ -1205,7 +1215,7 @@ namespace std {
                 return true;
             }
 
-            bool operator!=(const unsynchronized_view& other) const {
+            bool operator!=(const unordered_map_view& other) const {
                 if (size() != other.size()) {
                     return true;
                 }
@@ -1575,8 +1585,13 @@ namespace std {
 
         ~concurrent_unordered_map() = default;
 
-        unsynchronized_view get_unsynchronized_view() noexcept {
-            return unsynchronized_view(*this);
+        unordered_map_view make_unordered_map_view(bool lock_table = false) noexcept {
+            if (lock_table) {
+                auto guard = snapshot_and_lock_all<std::private_impl::LOCKING_ACTIVE>();
+                return unordered_map_view(*this, std::move(guard));
+            } else {
+                return unordered_map_view(*this);
+            }
         }
 
         // concurrent-safe assignment:
@@ -1601,7 +1616,7 @@ namespace std {
         concurrent_unordered_map& operator=(initializer_list<value_type> il) {
             {
                 //TODO: FIXME
-                auto locked_table = get_unsynchronized_view();
+                auto locked_table = make_unordered_map_view();
                 locked_table.clear();
                 locked_table.insert(il.begin(), il.end());
             }
@@ -1673,6 +1688,36 @@ namespace std {
                 return true;
             }
             return false;
+        }
+
+        template<typename F>
+        void visit_all(F functor) {
+            locks_t& locks = get_current_locks();
+            for (auto i = 0; i < locks.size(); ++i) {
+                bucket_guard guard(&locks, i);
+                const auto& bucket = buckets[i];
+
+                for (size_type j = 0; j < SLOTS_PER_BUCKET; ++j) {
+                    if (bucket.occupied(i)) {
+                        functor(bucket.element(i));
+                    }
+                }
+            }
+        }
+
+        template<typename F>
+        void visit_all(F functor) const {
+            locks_t& locks = get_current_locks();
+            for (auto i = 0; i < locks.size(); ++i) {
+                bucket_guard guard(&locks, i);
+                const auto& bucket = buckets[i];
+
+                for (size_type j = 0; j < SLOTS_PER_BUCKET; ++j) {
+                    if (bucket.occupied(i)) {
+                        functor(bucket.element(i));
+                    }
+                }
+            }
         }
 
         template <typename F, typename K, typename... Args>

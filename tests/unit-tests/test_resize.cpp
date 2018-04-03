@@ -9,10 +9,10 @@ TEST_CASE("rehash empty table", "[resize]") {
     int_int_table table(1);
     REQUIRE(unit_test_internals_view::hashpower(table) == 0);
 
-    table.get_unsynchronized_view().rehash(20);
+    table.make_unordered_map_view().rehash(20);
     REQUIRE(unit_test_internals_view::hashpower(table) == 20);
 
-    table.get_unsynchronized_view().rehash(1);
+    table.make_unordered_map_view().rehash(1);
     REQUIRE(unit_test_internals_view::hashpower(table) == 1);
 }
 
@@ -108,7 +108,7 @@ TEST_CASE("Resize on non-relocatable type", "[resize]") {
     non_relocatable_type value;
     std::array<char, 1024> ref;
     ref.fill('a');
-    auto lt = map.get_unsynchronized_view();
+    auto lt = map.make_unordered_map_view();
     for (const auto &kvpair : lt) {
         REQUIRE(ref == kvpair.second.buffer);
         REQUIRE(kvpair.second.pointerToBuffer == kvpair.second.buffer.data());
