@@ -1768,8 +1768,17 @@ namespace std {
         }
 
         size_type update(const key_type& key, const mapped_type& val) {
-            update(key, std::move(val));
+            const hash_value hv = hashed_key(key);
+            const auto guard = snapshot_and_lock_two<private_impl::LOCKING_ACTIVE>(hv);
+            const table_position pos = cuckoo_find(key, hv.partial, guard.first(), guard.second());
+            if (pos.status == ok) {
+                buckets[pos.index].mapped(pos.slot) = val;
+                return 1;
+            } else {
+                return 0;
+            }
         }
+
         template<typename K>
         size_type update(K&& key, mapped_type&& val) {
             const hash_value hv = hashed_key(key);
