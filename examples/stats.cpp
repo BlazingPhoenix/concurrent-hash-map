@@ -10,7 +10,7 @@ void process_stuff(size_t id, size_t data) {
 
 }
 
-void process_stats(std::concurrent_unordered_map<unsigned long long, size_t>::unsynchronized_view&&) {
+void process_stats(std::concurrent_unordered_map<unsigned long long, size_t>::unordered_map_view&&) {
 
 }
 
@@ -42,5 +42,5 @@ int main() {
         t.join();
     }
 
-    process_stats(std::move(stats.get_unsynchronized_view()));
+    process_stats(std::move(stats.make_unordered_map_view()));
 }

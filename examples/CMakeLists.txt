@@ -1,6 +1,3 @@
-add_executable(orderbook orderbook.cpp)
-target_link_libraries(orderbook concurrent_hash_map)
-
 add_executable(user_session_cache user_session_cache.cpp)
 target_link_libraries(user_session_cache concurrent_hash_map)
 

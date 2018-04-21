@@ -26,22 +26,22 @@ auto get_request() {
     return make_pair("alex", 13);
 }
 
-void read_users_from_file(concurrent_unordered_map<string_view, shared_ptr<user_t>>::unsynchronized_view& users) {
+void read_users_from_file(concurrent_unordered_map<string_view, shared_ptr<user_t>>::unordered_map_view& users) {
     user_t alex({"alex", 24});
     user_t alice({"alice", 21});
     users.insert(make_pair("alex", make_shared<user_t>(alex)));
     users.insert(make_pair("alice", make_shared<user_t>(alice)));
 }
 
-void cleanup(concurrent_unordered_map<string_view, shared_ptr<user_t>>::unsynchronized_view& users) {
+void cleanup(concurrent_unordered_map<string_view, shared_ptr<user_t>>::unordered_map_view& users) {
     users.clear();
 }
 
-void dump_to_file(concurrent_unordered_map<string_view, shared_ptr<user_t>>::unsynchronized_view& users) {
+void dump_to_file(concurrent_unordered_map<string_view, shared_ptr<user_t>>::unordered_map_view& users) {
 
 }
 
-void count_statistics(concurrent_unordered_map<string_view, shared_ptr<user_t>>::unsynchronized_view& users) {
+void count_statistics(concurrent_unordered_map<string_view, shared_ptr<user_t>>::unordered_map_view& users) {
     map<size_t, size_t> stats;
     for (auto i = users.begin(); i != users.end(); ++i) {
         stats[i->second->age]++;
@@ -58,7 +58,7 @@ int main() {
     concurrent_unordered_map<string_view, shared_ptr<user_t> > users;
     // single threaded fill
     {
-        auto unsafe_users = std::move(users.get_unsynchronized_view());
+        auto unsafe_users = std::move(users.make_unordered_map_view());
         read_users_from_file(unsafe_users);
     }
 
@@ -84,7 +84,7 @@ int main() {
         // accepting users
         while (--b > 0) {
             auto [new_user_name, user] = get_new_user();
-            users.insert(make_pair(new_user_name, user));
+            users.emplace(new_user_name, user);
         }
 
         for (auto& t: threads) {
@@ -92,7 +92,7 @@ int main() {
         }
 
         // single threaded processing:
-        auto unsafe_users = std::move(users.get_unsynchronized_view());
+        auto unsafe_users = std::move(users.make_unordered_map_view());
         count_statistics(unsafe_users);
         dump_to_file(unsafe_users);
         cleanup(unsafe_users);
