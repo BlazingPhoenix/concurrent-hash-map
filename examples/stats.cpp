@@ -1,17 +1,18 @@
 #include <concurrent_hash_map/concurrent_hash_map.hpp>
 
+#include <random>
+#include <iostream>
 #include <utility>
 
-std::pair<std::size_t, std::size_t> get_something() {
-    return std::make_pair(1u, 2u);
+void process_stuff(size_t id) {
+    std::cout << "Updated counter : " << id << std::endl;
 }
 
-void process_stuff(size_t id, size_t data) {
-
-}
-
-void process_stats(std::concurrent_unordered_map<unsigned long long, size_t>::unordered_map_view&&) {
-
+void process_stats(std::concurrent_unordered_map<unsigned long long, size_t>::unordered_map_view&& view) {
+    std::cout << "Statistic counters final state" << std::endl;
+    for (auto i = view.begin(); i != view.end(); ++i) {
+        std::cout << i->first << " " << i->second << std::endl;
+    }
 }
 
 int main() {
@@ -25,15 +26,17 @@ int main() {
     thread threads[threads_count];
     for (auto& t: threads) {
         t = thread([&stats]() {
-            while (1) {
-                auto [id, data] = get_something();
+            std::default_random_engine e1;
+            std::uniform_int_distribution<int> uniform_dist(1, 5);
+            for (auto i = 0; i < 10; ++i) {
+                auto id = uniform_dist(e1);
                 stats.emplace_or_visit(
                         id,
                         [](auto& v){ ++v; },
                         0
                 );
 
-                process_stuff(id, data);
+                process_stuff(id);
             }
         });
     }

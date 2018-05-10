@@ -43,13 +43,13 @@ void dump_to_file(concurrent_unordered_map<string_view, shared_ptr<user_t>>::uno
 
 void count_statistics(concurrent_unordered_map<string_view, shared_ptr<user_t>>::unordered_map_view& users) {
     map<size_t, size_t> stats;
-    for (auto i = users.begin(); i != users.end(); ++i) {
-        stats[i->second->age]++;
+    for (const auto& user : users) {
+        stats[user.second->age]++;
     }
 
     cout << "User count by age stats" << endl;
-    for (auto i = stats.begin(); i != stats.end(); ++i) {
-        cout << i->first << '=' << i->second << endl;
+    for (auto& stat : stats) {
+        cout << stat.first << '=' << stat.second << endl;
     }
     cout << endl;
 }
