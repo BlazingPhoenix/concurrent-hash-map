@@ -136,6 +136,7 @@ void update_thread(AllEnvironment<KType> *env, size_t thread_seed) {
             case 2:
                 env->table.emplace_or_visit(k, updatefn, val_dist(gen));
                 env->table2.emplace_or_visit(k, [](ValType2 &v) { v -= 50; }, val_dist2(gen));
+                break;
             default:
                 throw std::logic_error("Impossible");
         }
