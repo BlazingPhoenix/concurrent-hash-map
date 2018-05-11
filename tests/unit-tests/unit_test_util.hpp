@@ -15,7 +15,7 @@
 
 // Returns a statically allocated value used to keep track of how many unfreed
 // bytes have been allocated. This value is shared across all threads.
-std::atomic<int64_t> &get_unfreed_bytes();
+std::atomic<int64_t>& get_unfreed_bytes();
 
 // We define a a allocator class that keeps track of how many unfreed bytes have
 // been allocated. Users can specify an optional bound for how many bytes can be
@@ -40,9 +40,9 @@ struct tracking_allocator {
     tracking_allocator() {}
 
     template<typename U>
-    tracking_allocator(const tracking_allocator<U, BOUND> &) {}
+    tracking_allocator(const tracking_allocator<U, BOUND>&) {}
 
-    T *allocate(size_t n) {
+    T* allocate(size_t n) {
         const size_t bytes_to_allocate = sizeof(T) * n;
         if (BOUND >= 0 && get_unfreed_bytes() + bytes_to_allocate > BOUND) {
             throw std::bad_alloc();
@@ -51,18 +51,18 @@ struct tracking_allocator {
         return std::allocator<T>().allocate(n);
     }
 
-    void deallocate(T *p, size_t n) {
+    void deallocate(T* p, size_t n) {
         get_unfreed_bytes() -= (sizeof(T) * n);
         std::allocator<T>().deallocate(p, n);
     }
 
     template<typename U, class... Args>
-    void construct(U *p, Args &&... args) {
+    void construct(U* p, Args &&... args) {
         new((void *) p) U(std::forward<Args>(args)...);
     }
 
     template<typename U>
-    void destroy(U *p) { p->~U(); }
+    void destroy(U* p) { p->~U(); }
 };
 
 template<typename T, typename U, int64_t BOUND>
@@ -93,24 +93,24 @@ std::concurrent_unordered_map<std::string, int, std::hash<std::string>,
 namespace std {
     template<typename T>
     struct hash<unique_ptr<T>> {
-        size_t operator()(const unique_ptr<T> &ptr) const {
+        size_t operator()(const unique_ptr<T>& ptr) const {
             return std::hash<T>()(*ptr);
         }
 
-        size_t operator()(const T *ptr) const { return std::hash<T>()(*ptr); }
+        size_t operator()(const T* ptr) const { return std::hash<T>()(*ptr); }
     };
 
     template<typename T>
     struct equal_to<unique_ptr<T>> {
-        bool operator()(const unique_ptr<T> &ptr1, const unique_ptr<T> &ptr2) const {
+        bool operator()(const unique_ptr<T>& ptr1, const unique_ptr<T>& ptr2) const {
             return *ptr1 == *ptr2;
         }
 
-        bool operator()(const T *ptr1, const unique_ptr<T> &ptr2) const {
+        bool operator()(const T* ptr1, const unique_ptr<T>& ptr2) const {
             return *ptr1 == *ptr2;
         }
 
-        bool operator()(const unique_ptr<T> &ptr1, const T *ptr2) const {
+        bool operator()(const unique_ptr<T>& ptr1, const T* ptr2) const {
             return *ptr1 == *ptr2;
         }
     };
@@ -155,12 +155,12 @@ public:
     }
 
     template<class concurrent_map>
-    static typename concurrent_map::locks_t &get_current_locks(const concurrent_map &table) {
+    static typename concurrent_map::locks_t& get_current_locks(const concurrent_map& table) {
         return table.locks;
     }
 
     template<class concurrent_map>
-    static typename concurrent_map::size_type hashpower(const concurrent_map &table) {
+    static typename concurrent_map::size_type hashpower(const concurrent_map& table) {
         return table.hashpower();
     }
 };

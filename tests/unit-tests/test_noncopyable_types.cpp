@@ -118,19 +118,19 @@ TEST_CASE("noncopyable insert lifetime") {
         REQUIRE(static_cast<bool>(value));
     }
 }
-
-TEST_CASE("noncopyable erase_fn") {
-    tbl tbl;
-    tbl.emplace(uptr(new int(10)), uptr(new int(10)));
-    auto decrement_and_erase = [](uptr &p) {
-        --(*p);
-        return *p == 0;
-    };
-    uptr k(new int(10));
-    for (int i = 0; i < 9; ++i) {
-        tbl.erase(k, decrement_and_erase);
-        REQUIRE(tbl.visit(k, [](tbl::mapped_type &) {}));
-    }
-    tbl.erase(k, decrement_and_erase);
-    REQUIRE_FALSE(tbl.visit(k, [](tbl::mapped_type &) {}));
-}
+//
+//TEST_CASE("noncopyable erase_fn") {
+//    tbl tbl;
+//    tbl.emplace(uptr(new int(10)), uptr(new int(10)));
+//    auto decrement_and_erase = [](uptr &p) {
+//        --(*p);
+//        return *p == 0;
+//    };
+//    uptr k(new int(10));
+//    for (int i = 0; i < 9; ++i) {
+//        tbl.erase(k, decrement_and_erase);
+//        REQUIRE(tbl.visit(k, [](tbl::mapped_type &) {}));
+//    }
+//    tbl.erase(k, decrement_and_erase);
+//    REQUIRE_FALSE(tbl.visit(k, [](tbl::mapped_type &) {}));
+//}

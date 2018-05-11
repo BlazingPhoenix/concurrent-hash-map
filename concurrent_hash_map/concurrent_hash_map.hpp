@@ -1162,12 +1162,6 @@ namespace std {
                 : delegate(delegate)
                 {
                 }
-            unordered_map_view(concurrent_unordered_map<Key, Value, Hasher, Equality, Allocator>& delegate,
-                               all_buckets_guard<std::private_impl::LOCKING_ACTIVE>&& guard)
-                    : delegate(delegate)
-                    , guard(std::forward<all_buckets_guard<std::private_impl::LOCKING_ACTIVE>>(guard))
-            {
-            }
 
             // iterators:
             iterator begin() noexcept {
@@ -1500,6 +1494,15 @@ namespace std {
             void rehash(size_type n) {
                 delegate.cuckoo_expand_simple<private_impl::LOCKING_INACTIVE, manual_resize>(n);
             }
+
+        private:
+            unordered_map_view(concurrent_unordered_map<Key, Value, Hasher, Equality, Allocator>& delegate,
+                               all_buckets_guard<std::private_impl::LOCKING_ACTIVE>&& guard)
+                    : delegate(delegate)
+                    , guard(std::forward<all_buckets_guard<std::private_impl::LOCKING_ACTIVE>>(guard))
+            {
+            }
+            friend concurrent_unordered_map;
         };
 
         // construct/destroy:
@@ -1545,7 +1548,7 @@ namespace std {
             : allocator(std::move(source.allocator))
             , hash(std::move(source.hash))
             , key_comparator(std::move(source.key_comparator))
-            , buckets(std::move(source.buckets), std::move(source.allocator)) //TODO:FIXME
+            , buckets(std::move(source.buckets), std::move(source.allocator))
             , all_locks(std::move(source.all_locks))
             , minimum_load_factor_holder(source.minimum_load_factor_holder.
                                          load(std::memory_order_acquire))
@@ -1585,8 +1588,8 @@ namespace std {
 
         ~concurrent_unordered_map() = default;
 
-        unordered_map_view make_unordered_map_view(bool lock_table = false) noexcept {
-            if (lock_table) {
+        unordered_map_view make_unordered_map_view(bool lock = false) noexcept {
+            if (lock) {
                 auto guard = snapshot_and_lock_all<std::private_impl::LOCKING_ACTIVE>();
                 return unordered_map_view(*this, std::move(guard));
             } else {
@@ -1647,8 +1650,7 @@ namespace std {
         }
 
         // concurrent-safe element retrieval:
-        template<typename K>
-        experimental::optional<mapped_type> find(K&& key) const {
+        experimental::optional<mapped_type> find(const key_type& key) const {
             const hash_value hashvalue = hashed_key(key);
             const auto guard = snapshot_and_lock_two<private_impl::LOCKING_ACTIVE>(hashvalue);
             const table_position pos = cuckoo_find(key, hashvalue.partial,
@@ -1677,8 +1679,8 @@ namespace std {
             return pos.status == ok;
         }
 
-        template <typename F, typename K>
-        bool visit(K&& key, F functor) {
+        template <typename F>
+        bool visit(const key_type& key, F functor) {
             const hash_value hashvalue = hashed_key(key);
             const auto guard = snapshot_and_lock_two<private_impl::LOCKING_ACTIVE>(hashvalue);
             const table_position pos = cuckoo_find(key, hashvalue.partial,
@@ -1720,7 +1722,7 @@ namespace std {
             }
         }
 
-        template <typename F, typename K, typename... Args>
+        template <typename K, typename F, typename... Args>
         bool emplace_or_visit(K&& key, F functor, Args&&... val) {
             hash_value hv = hashed_key(key);
             auto b = snapshot_and_lock_two<private_impl::LOCKING_ACTIVE>(hv);
@@ -1779,43 +1781,26 @@ namespace std {
             }
         }
 
-        template<typename K>
-        size_type update(K&& key, mapped_type&& val) {
+        template<typename K, typename... Args>
+        size_type update(K&& key, Args&&... val) {
             const hash_value hv = hashed_key(key);
             const auto guard = snapshot_and_lock_two<private_impl::LOCKING_ACTIVE>(hv);
-            const table_position pos = cuckoo_find(key, hv.partial, guard.first(), guard.second());
+            const table_position pos = cuckoo_find(std::forward<K>(key), hv.partial, guard.first(), guard.second());
             if (pos.status == ok) {
-                buckets[pos.index].mapped(pos.slot) = std::forward<mapped_type>(val);
+                buckets[pos.index].mapped(pos.slot) = std::forward<mapped_type>(std::forward<Args>(val)...);
                 return 1;
             } else {
                 return 0;
             }
         }
 
-        template<typename K>
-        size_type erase(K&& key) {
+        size_type erase(const key_type& key) {
             const hash_value hv = hashed_key(key);
             const auto guard = snapshot_and_lock_two<private_impl::LOCKING_ACTIVE>(hv);
             const table_position pos =
             cuckoo_find(key, hv.partial, guard.first(), guard.second());
             if (pos.status == ok) {
                 del_from_bucket(pos.index, pos.slot);
-                return 1;
-            } else {
-                return 0;
-            }
-        }
-
-        template<typename F>
-        size_type erase(const key_type& key, F functor) {
-            const hash_value hv = hashed_key(key);
-            const auto guard = snapshot_and_lock_two<private_impl::LOCKING_ACTIVE>(hv);
-            const table_position pos =
-            cuckoo_find(key, hv.partial, guard.first(), guard.second());
-            if (pos.status == ok) {
-                if (functor(buckets[pos.index].mapped(pos.slot))) {
-                    del_from_bucket(pos.index, pos.slot);
-                }
                 return 1;
             } else {
                 return 0;
