@@ -18,7 +18,7 @@
 
 #include <concurrent_hash_map/concurrent_hash_map.hpp>
 #include <pcg_random.hpp>
-#include "test_util.hh"
+#include "test_util.hpp"
 
 typedef uint32_t KeyType;
 typedef std::string KeyType2;
