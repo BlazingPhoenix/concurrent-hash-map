@@ -749,7 +749,128 @@ int main() {
     }
 };</span>
 </pre>
+<h2>V. Performance benchmark</h2>
 
+<!-- amCharts javascript sources -->
+<script type="text/javascript" src="https://www.amcharts.com/lib/3/amcharts.js"></script>
+<script type="text/javascript" src="https://www.amcharts.com/lib/3/serial.js"></script>
+
+
+<!-- amCharts javascript code -->
+<script type="text/javascript">
+    AmCharts.makeChart("chartdiv",
+        {
+            "type": "serial",
+            "categoryField": "category",
+            "sequencedAnimation": false,
+            "theme": "default",
+            "categoryAxis": {
+                "gridPosition": "start",
+                "title": "Thread count"
+            },
+            "trendLines": [],
+            "graphs": [
+                {
+                    "balloonText": "[[title]] of [[category]]:[[value]]",
+                    "bullet": "round",
+                    "id": "AmGraph-1",
+                    "title": "boost::synchronized_value<std::unordered_map>",
+                    "valueField": "column-1"
+                },
+                {
+                    "balloonText": "[[title]] of [[category]]:[[value]]",
+                    "bullet": "square",
+                    "id": "AmGraph-2",
+                    "tabIndex": 6,
+                    "title": "std::concurrent_unordered_map prototype",
+                    "valueField": "column-2"
+                },
+                {
+                    "id": "AmGraph-5",
+                    "title": "Sharded unordered map",
+                    "valueField": "column-3"
+                }
+            ],
+            "guides": [],
+            "valueAxes": [
+                {
+                    "id": "ValueAxis-1",
+                    "title": "Time, milliseconds"
+                }
+            ],
+            "allLabels": [],
+            "balloon": {},
+            "legend": {
+                "enabled": true,
+                "useGraphSettings": true
+            },
+            "titles": [
+                {
+                    "id": "Title-1",
+                    "size": 15,
+                    "text": "Concurrent unordered map benchmark"
+                }
+            ],
+            "dataProvider": [
+                {
+                    "column-1": "837",
+                    "column-2": "954",
+                    "column-3": "1284",
+                    "category": "1"
+                },
+                {
+                    "column-1": "2088",
+                    "column-2": "983",
+                    "column-3": "2740",
+                    "category": "2"
+                },
+                {
+                    "column-1": "5018",
+                    "column-2": "972",
+                    "column-3": "4408",
+                    "category": "4"
+                },
+                {
+                    "column-1": "13867",
+                    "column-2": "994",
+                    "column-3": "5833",
+                    "category": "8"
+                },
+                {
+                    "column-1": "28314",
+                    "column-2": "985",
+                    "column-3": "11717",
+                    "category": "16"
+                },
+                {
+                    "column-1": "61382",
+                    "column-2": "1224",
+                    "column-3": "19726",
+                    "category": "32"
+                },
+                {
+                    "column-1": "136437",
+                    "column-2": "4561",
+                    "column-3": "38021",
+                    "category": "64"
+                }
+            ]
+        }
+    );
+</script>
+
+We've compared our implementation with a couple of simple other implementations of concurrent unordered map.<br/>
+1) The simplest implementation is just a regular unordered_map with guarded by a single mutex, we've implemented mutex guard as boost::synchronized_value.<br/>
+2) Many programming languages has internal implementation of concurrent hash map just as fixed number of regular hash maps, each of them has it's own mutex and represents some kind of hash table shard.<br/>
+3) Our reference implementation.<br/>
+<br/>
+The test was very simple:<br/>
+* All maps has string keys and int values.<br/>
+* We created appropriate number of threads that tries on each iteration to find some random value in the map and add another random value to it. If the key is absent in the map we just fill it with a random value.<br/>
+* Each thread had 1000000 of iterations.<br/>
+* We use computer with 56 virtual cores & 256GB of memory for the tests.<br/>
+<div id="chartdiv" style="width: 100%; height: 400px; background-color: #FFFFFF;" ></div>
+As we can see on the chart performance scales linearly when number of threads is less than number of cores. But when we exceed number of cores we observe significant work time growth. We consider that the algorithm from the reference implementation is rather better then naive implementation and better than implementation from another programming languages.
 <script type="text/javascript">
     function colorize_texts(texts) {
         for (var i = 0; i < texts.length; ++i) {
