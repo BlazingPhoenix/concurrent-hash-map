@@ -513,7 +513,7 @@ private:
 
 constexpr int TEST_ITERATIONS = 1000 * 1000;
 constexpr int MAX_KEY = 100 * 1000;
-constexpr int THREAD_COUNT = 8;
+constexpr int THREAD_COUNT = 120;
 
 template<typename M, typename Operation>
 void test_thread(M& m, Operation op) {
@@ -535,16 +535,16 @@ long long get_time_ms() {
 }
 
 template<typename M, typename Operation>
-void run_test(M& m, Operation op, const std::string& description) {
+void run_test(M& m, Operation op, const std::string& description, unsigned thread_count) {
     auto start_time = get_time_ms();
 
     std::vector<std::thread> threads;
-    for (int i = 0; i < THREAD_COUNT; ++i) {
+    for (int i = 0; i < thread_count; ++i) {
         std::thread t([&m, op] { test_thread(m, op); });
         threads.push_back(std::move(t));
     }
 
-    for (int i = 0; i < THREAD_COUNT; ++i) {
+    for (int i = 0; i < thread_count; ++i) {
         threads[i].join();
     }
 
@@ -555,50 +555,54 @@ void run_test(M& m, Operation op, const std::string& description) {
 
 int main(int argc, char **argv) {
     srand(13213);
-    boost::synchronized_value<std::unordered_map<std::string, int>> m0;
-    run_test(m0, [](boost::synchronized_value<std::unordered_map<std::string, int>>& m,
-                    const std::string& key, int val, int rnd) {
-        auto i = m->find(key);
+    for (unsigned thread_count : { 1, 2, 4, 8, 16, 32, 64, 128 }) {
+        std::cout << "Thread count: " << thread_count << std::endl;
 
-        if (i == m->end()) {
-            m->insert(make_pair(key, val));
-        } else {
-            if (rnd == 0) {
-                i->second += val;
-            }
-        }
-    }, "Default syncronized map");
+        boost::synchronized_value<std::unordered_map<std::string, int>> m0;
+        run_test(m0, [](boost::synchronized_value<std::unordered_map<std::string, int>>& m,
+                        const std::string& key, int val, int rnd) {
+                     auto i = m->find(key);
 
-    std::concurrent_unordered_map<std::string, int> m2(MAX_KEY);
-    run_test(m2, [](std::concurrent_unordered_map<std::string, int>& m,
-                    const std::string& key, int val, int rnd) {
-        int old;
-        auto i = m.find(key, old);
+                     if (i == m->end()) {
+                         m->insert(make_pair(key, val));
+                     } else {
+                         if (rnd == 0) {
+                             i->second += val;
+                         }
+                     }
+                 }, "Default syncronized map", thread_count);
 
-        if (!i) {
-            m.insert(std::make_pair(key, val));
-        } else {
-            if (rnd == 0) {
-                m.update(key, old + val);
-            }
-        }
-    }, "std concurrent hash map");
+        std::concurrent_unordered_map<std::string, int> m2(MAX_KEY);
+        run_test(m2, [](std::concurrent_unordered_map<std::string, int>& m,
+                        const std::string& key, int val, int rnd) {
+                     int old;
+                     auto i = m.find(key, old);
 
-    concurrent_unordered_map<std::string, int> m4(THREAD_COUNT);
-    run_test(m4, [](concurrent_unordered_map<std::string, int>& m,
-                    const std::string& key, int val, int rnd) {
-        m.count(key);
-        auto i = m.find(key);
+                     if (!i) {
+                         m.insert(std::make_pair(key, val));
+                     } else {
+                         if (rnd == 0) {
+                             m.update(key, old + val);
+                         }
+                     }
+                 }, "std concurrent hash map", thread_count);
 
-        if (i == m.end()) {
-            m.insert(make_pair(key, val));
-        } else {
-            if (rnd == 0) {
-                i->second += val;
-            }
-        }
+        concurrent_unordered_map<std::string, int> m4(thread_count);
+        run_test(m4, [](concurrent_unordered_map<std::string, int>& m,
+                        const std::string& key, int val, int rnd) {
+                     m.count(key);
+                     auto i = m.find(key);
 
-    }, "Collision list based syncronized map");
+                     if (i == m.end()) {
+                         m.insert(make_pair(key, val));
+                     } else {
+                         if (rnd == 0) {
+                             i->second += val;
+                         }
+                     }
+
+                 }, "Collision list based syncronized map", thread_count);
+    }
 
     return 0;
 }

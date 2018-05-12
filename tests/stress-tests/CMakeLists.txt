@@ -15,10 +15,12 @@ target_link_libraries(stress_checked
 )
 add_test(NAME stress_checked COMMAND stress_checked)
 
-find_package(Boost COMPONENTS system filesystem REQUIRED)
+find_package(Boost COMPONENTS system thread REQUIRED)
+include_directories(${Boost_INCLUDE_DIRS})
 add_executable(benchmark benchmark.cc)
 target_link_libraries(benchmark
         PRIVATE ${Boost_SYSTEM_LIBRARY}
+        PRIVATE ${Boost_THREAD_LIBRARY}
         PRIVATE concurrent_hash_map
         PRIVATE pcg
 )
