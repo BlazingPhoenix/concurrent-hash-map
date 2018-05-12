@@ -63,38 +63,36 @@ int main() {
     }
 
     constexpr unsigned threads_count = 10;
-    while(1) {
-        // concurrent work:
-        std::atomic<int> b{threads_count * 100500};
-        thread threads[threads_count];
+    // concurrent work:
+    std::atomic<int> b{threads_count * 100500};
+    thread threads[threads_count];
 
-        for (auto& t: threads) {
-            // processing users
-            t = thread([&users, &b]() {
-                while (--b > 0) {
-                    auto [user_name, data] = get_request();
-                    auto u = users.find(user_name);
-                    if (!u) continue;
+    for (auto& t: threads) {
+        // processing users
+        t = thread([&users, &b]() {
+            while (--b > 0) {
+                auto [user_name, data] = get_request();
+                auto u = users.find(user_name);
+                if (!u) continue;
 
-                    process_user(*u, data);
-                }
-            });
-        }
-
-        // accepting users
-        while (--b > 0) {
-            auto [new_user_name, user] = get_new_user();
-            users.emplace(new_user_name, user);
-        }
-
-        for (auto& t: threads) {
-            t.join();
-        }
-
-        // single threaded processing:
-        auto unsafe_users = std::move(users.make_unordered_map_view());
-        count_statistics(unsafe_users);
-        dump_to_file(unsafe_users);
-        cleanup(unsafe_users);
+                process_user(*u, data);
+            }
+        });
     }
+
+    // accepting users
+    while (--b > 0) {
+        auto [new_user_name, user] = get_new_user();
+        users.emplace(new_user_name, user);
+    }
+
+    for (auto& t: threads) {
+        t.join();
+    }
+
+    // single threaded processing:
+    auto unsafe_users = std::move(users.make_unordered_map_view());
+    count_statistics(unsafe_users);
+    dump_to_file(unsafe_users);
+    cleanup(unsafe_users);
 }

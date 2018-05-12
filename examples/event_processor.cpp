@@ -16,7 +16,7 @@ struct event_data {
     event_data& operator=(const event_data&) = delete;
     event_data& operator=(event_data&&) = default;
 
-    time_t start;
+    time_t start = time(nullptr);
     std::string name;
     unsigned long long priority = 0;
 };
@@ -66,10 +66,10 @@ int main() {
                 std::pair<unsigned long long, std::unique_ptr<event_data>> event(generator.get_event());
 
                 events.emplace_or_visit(event.first, [&event](unique_ptr<event_data>& v) {
-                    if (v || v->priority < event.second->priority) {
+                    if (v && v->priority < event.second->priority) {
                         std::swap(event.second, v);
                     }
-                }, unique_ptr<event_data>{});
+                }, make_unique<event_data>());
             }
         });
 
