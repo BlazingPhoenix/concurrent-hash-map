@@ -749,7 +749,7 @@ int main() {
     }
 };</span>
 </pre>
-<h2>V. Performance benchmark</h2>
+<h2><span style="background-color: green">V. Performance benchmark</span></h2>
 
 <!-- amCharts javascript sources -->
 <script type="text/javascript" src="https://www.amcharts.com/lib/3/amcharts.js"></script>
@@ -858,7 +858,7 @@ int main() {
         }
     );
 </script>
-
+<span style="background-color: green">
 We've compared our implementation with a couple of simple other implementations of concurrent unordered map.<br/>
 1) The simplest implementation is just a regular unordered_map with guarded by a single mutex, we've implemented mutex guard as boost::synchronized_value.<br/>
 2) Many programming languages has internal implementation of concurrent hash map just as fixed number of regular hash maps, each of them has it's own mutex and represents some kind of hash table shard.<br/>
@@ -871,6 +871,8 @@ The test was very simple:<br/>
 * We use computer with 56 virtual cores & 256GB of memory for the tests.<br/>
 <div id="chartdiv" style="width: 100%; height: 400px; background-color: #FFFFFF;" ></div>
 As we can see on the chart performance scales linearly when number of threads is less than number of cores. But when we exceed number of cores we observe significant work time growth. We consider that the algorithm from the reference implementation is rather better then naive implementation and better than implementation from another programming languages.
+</span>
+
 <script type="text/javascript">
     function colorize_texts(texts) {
         for (var i = 0; i < texts.length; ++i) {
