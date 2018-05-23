@@ -9,7 +9,7 @@ Usage example
 #include <string>
 
 std::concurrent_unordered_map<std::string, int> m;
-m.insert(std::make_pair("abc", 123));
+m.emplace("abc", 123);
 m.update("abc", 124);
 assert(*m.find("abc") == 124);
 ```
