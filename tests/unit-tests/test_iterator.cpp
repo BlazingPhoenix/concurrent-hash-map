@@ -68,7 +68,7 @@ TEST_CASE("empty table iteration", "[iterator]") {
 TEST_CASE("iterator walkthrough", "[iterator]") {
     int_int_table table;
     for (int i = 0; i < 10; ++i) {
-        table.insert(std::make_pair(i, i));
+        table.emplace(i, i);
     }
 
     SECTION("forward postfix walkthrough") {
@@ -133,7 +133,7 @@ TEST_CASE("iterator walkthrough", "[iterator]") {
 TEST_CASE("iterator modification", "[iterator]") {
     int_int_table table;
     for (int i = 0; i < 10; ++i) {
-        table.insert(std::make_pair(i, i));
+        table.emplace(i, i);
     }
 
     auto lt = table.make_unordered_map_view();
@@ -152,7 +152,7 @@ TEST_CASE("iterator modification", "[iterator]") {
 TEST_CASE("Cast iterator to const iterator", "[iterator]") {
     int_int_table table;
     for (int i = 0; i < 10; ++i) {
-        table.insert(std::make_pair(i, i));
+        table.emplace(i, i);
     }
     auto lt = table.make_unordered_map_view();
     for (int_int_table::unordered_map_view::iterator it = lt.begin(); it != lt.end();

@@ -147,7 +147,7 @@ TEST_CASE("range constructor", "[constructor]") {
 
 TEST_CASE("move constructor", "[constructor]") {
     tbl_t map(10, StatefulHash(10), StatefulKeyEqual(20), alloc_t(30));
-    map.insert(std::make_pair(10, 10));
+    map.emplace(10, 10);
     tbl_t map2(std::move(map));
     const auto& m1 = map.make_unordered_map_view();
     const auto& m2 = map2.make_unordered_map_view();

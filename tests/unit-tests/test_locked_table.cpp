@@ -58,7 +58,7 @@ TEST_CASE("locked_table move", "[locked_table]") {
 
 TEST_CASE("locked_table info", "[locked_table]") {
     int_int_table tbl;
-    tbl.insert(std::make_pair(10, 10));
+    tbl.emplace(10, 10);
     auto lt = tbl.make_unordered_map_view();
 
     // We should still be able to call table info operations on the
@@ -70,7 +70,7 @@ TEST_CASE("locked_table info", "[locked_table]") {
 
 TEST_CASE("locked_table clear", "[locked_table]") {
     int_int_table tbl;
-    tbl.insert(std::make_pair(10, 10));
+    tbl.emplace(10, 10);
     auto lt = tbl.make_unordered_map_view();
     REQUIRE(lt.size() == 1);
     lt.clear();
@@ -81,7 +81,7 @@ TEST_CASE("locked_table clear", "[locked_table]") {
 
 TEST_CASE("locked_table insert duplicate", "[locked_table]") {
     int_int_table tbl;
-    tbl.insert(std::make_pair(10, 10));
+    tbl.emplace(10, 10);
     {
         auto lt = tbl.make_unordered_map_view();
         auto result = lt.insert(std::make_pair(10, 20));
@@ -95,7 +95,7 @@ TEST_CASE("locked_table insert duplicate", "[locked_table]") {
 
 TEST_CASE("locked_table insert new key", "[locked_table]") {
     int_int_table tbl;
-    tbl.insert(std::make_pair(10, 10));
+    tbl.emplace(10, 10);
     {
         auto lt = tbl.make_unordered_map_view();
         auto result = lt.insert(std::make_pair(20, 20));
@@ -143,7 +143,7 @@ TEST_CASE("locked_table insert lifetime", "[locked_table]") {
 TEST_CASE("locked_table erase", "[locked_table]") {
     int_int_table tbl;
     for (int i = 0; i < 5; ++i) {
-        tbl.insert(std::make_pair(i, i));
+        tbl.emplace(i, i);
     }
     using lt_t = int_int_table::unordered_map_view;
 

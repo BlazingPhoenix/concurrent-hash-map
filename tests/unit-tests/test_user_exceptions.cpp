@@ -94,9 +94,9 @@ TEST_CASE("user exceptions", "[user_exceptions]") {
     // "find/contains"
     {
         exception_table tbl;
-        tbl.insert(std::make_pair(1, 1));
-        tbl.insert(std::make_pair(2, 2));
-        tbl.insert(std::make_pair(3, 3));
+        tbl.emplace(1, 1);
+        tbl.emplace(2, 2);
+        tbl.emplace(3, 3);
         test_user_exceptions::hash_throw = true;
         REQUIRE_THROWS_AS(tbl.find(3), std::runtime_error);
         test_user_exceptions::hash_throw = false;
@@ -111,9 +111,9 @@ TEST_CASE("user exceptions", "[user_exceptions]") {
     {
         exception_table tbl;
         test_user_exceptions::constructor_throw = true;
-        REQUIRE_THROWS_AS(tbl.insert(std::make_pair(100, 100)), std::runtime_error);
+        REQUIRE_THROWS_AS(tbl.emplace(100, 100), std::runtime_error);
         test_user_exceptions::constructor_throw = false;
-        REQUIRE(tbl.insert(std::make_pair(100, 100)));
+        REQUIRE(tbl.emplace(100, 100));
         check_iter_table(tbl, 1);
     }
 
@@ -121,7 +121,7 @@ TEST_CASE("user exceptions", "[user_exceptions]") {
     {
         exception_table tbl;
         for (int i = 0; i < 10; ++i) {
-            tbl.insert(std::make_pair(i, i));
+            tbl.emplace(i, i);
         }
         test_user_exceptions::hash_throw = true;
         REQUIRE_THROWS_AS(tbl.erase(5), std::runtime_error);
@@ -136,8 +136,8 @@ TEST_CASE("user exceptions", "[user_exceptions]") {
     // "update"
     {
         exception_table tbl;
-        tbl.insert(std::make_pair(9, 9));
-        tbl.insert(std::make_pair(10, 10));
+        tbl.emplace(9, 9);
+        tbl.emplace(10, 10);
         test_user_exceptions::hash_throw = true;
         REQUIRE_THROWS_AS(tbl.update(9, 10), std::runtime_error);
         test_user_exceptions::hash_throw = false;
@@ -151,8 +151,8 @@ TEST_CASE("user exceptions", "[user_exceptions]") {
     // "update_fn"
     {
         exception_table tbl;
-        tbl.insert(std::make_pair(9, 9));
-        tbl.insert(std::make_pair(10, 10));
+        tbl.emplace(9, 9);
+        tbl.emplace(10, 10);
         auto updater = [](size_t &val) { val++; };
         test_user_exceptions::hash_throw = true;
         REQUIRE_THROWS_AS(tbl.visit(9, updater), std::runtime_error);

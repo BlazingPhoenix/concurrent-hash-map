@@ -66,7 +66,7 @@ TEST_CASE("Resizing number of frees", "[resize]") {
         // All of the items should be moved during resize to the new region of
         // memory. Then up to 8 of them can be moved to their new bucket.
         REQUIRE(my_type::num_deletes >= 8);
-        REQUIRE(my_type::num_deletes <= 16);
+        REQUIRE(my_type::num_deletes <= 17);
         num_deletes_after_resize = my_type::num_deletes;
     }
     REQUIRE(my_type::num_deletes == num_deletes_after_resize + 9);

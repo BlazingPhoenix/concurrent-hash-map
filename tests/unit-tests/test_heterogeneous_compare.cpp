@@ -105,13 +105,13 @@ TEST_CASE("heterogeneous compare", "[heterogeneous compare]") {
             REQUIRE(val);
             REQUIRE_FALSE(val.value());
         }
-        REQUIRE(int_constructions == 1);
+        REQUIRE(int_constructions == 2);
         REQUIRE(copy_constructions == 0);
-        REQUIRE(destructions == 1);
-        REQUIRE(foo_comparisons == 0);
-        REQUIRE(int_comparisons == 2);
-        REQUIRE(foo_hashes == 0);
-        REQUIRE(int_hashes == 3);
+        REQUIRE(destructions == 2);
+        REQUIRE(foo_comparisons == 1);
+        REQUIRE(int_comparisons == 1);
+        REQUIRE(foo_hashes == 1);
+        REQUIRE(int_hashes == 2);
     }
 
     SECTION("foo insert_or_assign") {
@@ -143,13 +143,13 @@ TEST_CASE("heterogeneous compare", "[heterogeneous compare]") {
             map.visit(1, [&val](bool map_value) { val = map_value; });
             REQUIRE_FALSE(val);
         }
-        REQUIRE(int_constructions == 1);
+        REQUIRE(int_constructions == 3);
         REQUIRE(copy_constructions == 0);
-        REQUIRE(destructions == 1);
-        REQUIRE(foo_comparisons == 0);
-        REQUIRE(int_comparisons == 1);
-        REQUIRE(foo_hashes == 0);
-        REQUIRE(int_hashes == 3);
+        REQUIRE(destructions == 3);
+        REQUIRE(foo_comparisons == 1);
+        REQUIRE(int_comparisons == 0);
+        REQUIRE(foo_hashes == 2);
+        REQUIRE(int_hashes == 1);
     }
 
     SECTION("foo find") {
@@ -177,13 +177,13 @@ TEST_CASE("heterogeneous compare", "[heterogeneous compare]") {
             // Shouldn't do comparison because of different partial key
             REQUIRE(!map.find(4));
         }
-        REQUIRE(int_constructions == 1);
+        REQUIRE(int_constructions == 3);
         REQUIRE(copy_constructions == 0);
-        REQUIRE(destructions == 1);
-        REQUIRE(foo_comparisons == 0);
-        REQUIRE(int_comparisons == 1);
-        REQUIRE(foo_hashes == 0);
-        REQUIRE(int_hashes == 3);
+        REQUIRE(destructions == 3);
+        REQUIRE(foo_comparisons == 1);
+        REQUIRE(int_comparisons == 0);
+        REQUIRE(foo_hashes == 2);
+        REQUIRE(int_hashes == 1);
     }
 
     SECTION("erase") {
@@ -193,13 +193,13 @@ TEST_CASE("heterogeneous compare", "[heterogeneous compare]") {
             REQUIRE(map.erase(0));
             REQUIRE(!map.find(0));
         }
-        REQUIRE(int_constructions == 1);
+        REQUIRE(int_constructions == 2);
         REQUIRE(copy_constructions == 0);
-        REQUIRE(destructions == 1);
+        REQUIRE(destructions == 2);
         REQUIRE(foo_comparisons == 0);
         REQUIRE(int_comparisons == 1);
-        REQUIRE(foo_hashes == 0);
-        REQUIRE(int_hashes == 3);
+        REQUIRE(foo_hashes == 1);
+        REQUIRE(int_hashes == 2);
     }
 
     SECTION("update") {
@@ -209,12 +209,12 @@ TEST_CASE("heterogeneous compare", "[heterogeneous compare]") {
             REQUIRE(map.update(0, false));
             REQUIRE(!map.find(0).value());
         }
-        REQUIRE(int_constructions == 1);
+        REQUIRE(int_constructions == 2);
         REQUIRE(copy_constructions == 0);
-        REQUIRE(destructions == 1);
-        REQUIRE(foo_comparisons == 0);
-        REQUIRE(int_comparisons == 2);
-        REQUIRE(foo_hashes == 0);
-        REQUIRE(int_hashes == 3);
+        REQUIRE(destructions == 2);
+        REQUIRE(foo_comparisons == 1);
+        REQUIRE(int_comparisons == 1);
+        REQUIRE(foo_hashes == 1);
+        REQUIRE(int_hashes == 2);
     }
 }

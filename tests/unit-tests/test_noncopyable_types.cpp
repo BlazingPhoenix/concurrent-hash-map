@@ -79,10 +79,10 @@ TEST_CASE("nested table", "[noncopyable]") {
     nested_tbl tbl;
     std::string keys[] = {"abc", "def"};
     for (std::string &k : keys) {
-        tbl.insert(std::make_pair(std::string(k), nested_tbl::mapped_type(new inner_tbl)));
+        tbl.emplace(std::string(k), nested_tbl::mapped_type(new inner_tbl));
         tbl.emplace_or_visit(k, [&k](nested_tbl::mapped_type &t) {
             for (char c : k) {
-                t->insert(std::make_pair(c, std::string(k)));
+                t->emplace(c, std::string(k));
             }
         });
     }
@@ -118,19 +118,19 @@ TEST_CASE("noncopyable insert lifetime") {
         REQUIRE(static_cast<bool>(value));
     }
 }
-//
-//TEST_CASE("noncopyable erase_fn") {
-//    tbl tbl;
-//    tbl.emplace(uptr(new int(10)), uptr(new int(10)));
-//    auto decrement_and_erase = [](uptr &p) {
-//        --(*p);
-//        return *p == 0;
-//    };
-//    uptr k(new int(10));
-//    for (int i = 0; i < 9; ++i) {
-//        tbl.erase(k, decrement_and_erase);
-//        REQUIRE(tbl.visit(k, [](tbl::mapped_type &) {}));
-//    }
-//    tbl.erase(k, decrement_and_erase);
-//    REQUIRE_FALSE(tbl.visit(k, [](tbl::mapped_type &) {}));
-//}
+
+TEST_CASE("noncopyable erase_fn") {
+    tbl tbl;
+    tbl.emplace(uptr(new int(10)), uptr(new int(10)));
+    auto decrement_and_erase = [](uptr &p) {
+        --(*p);
+        return *p == 0;
+    };
+    uptr k(new int(10));
+    for (int i = 0; i < 9; ++i) {
+        tbl.erase_and_visit(k, decrement_and_erase);
+        REQUIRE(tbl.visit(k, [](tbl::mapped_type &) {}));
+    }
+    tbl.erase_and_visit(k, decrement_and_erase);
+    REQUIRE_FALSE(tbl.visit(k, [](tbl::mapped_type &) {}));
+}

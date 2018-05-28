@@ -808,7 +808,7 @@ namespace std {
     public:
 
         class unordered_map_view {
-            concurrent_unordered_map<Key, Value, Hasher, Equality, Allocator>& delegate;
+            std::reference_wrapper<concurrent_unordered_map<Key, Value, Hasher, Equality, Allocator>> delegate;
             all_buckets_guard<std::private_impl::LOCKING_ACTIVE> guard;
 
         public:
@@ -1165,35 +1165,35 @@ namespace std {
 
             // iterators:
             iterator begin() noexcept {
-                return iterator(&delegate.buckets, 0, 0);
+                return iterator(&delegate.get().buckets, 0, 0);
             }
             const_iterator begin() const noexcept {
-                return const_iterator(&delegate.buckets, 0, 0);
+                return const_iterator(&delegate.get().buckets, 0, 0);
             }
             iterator end() noexcept {
-                return iterator(&delegate.buckets, delegate.buckets.size(), 0);
+                return iterator(&delegate.get().buckets, delegate.get().buckets.size(), 0);
             }
             const_iterator end() const noexcept {
-                return const_iterator(&delegate.buckets, delegate.buckets.size(), 0);
+                return const_iterator(&delegate.get().buckets, delegate.get().buckets.size(), 0);
             }
             const_iterator cbegin() const noexcept {
-                return const_iterator(&delegate.buckets, 0, 0);
+                return const_iterator(&delegate.get().buckets, 0, 0);
             }
             const_iterator cend() const noexcept {
-                return const_iterator(&delegate.buckets, delegate.buckets.size(), 0);
+                return const_iterator(&delegate.get().buckets, delegate.get().buckets.size(), 0);
             }
 
             // capacity:
             bool empty() const noexcept {
-                return delegate.size() == 0;
+                return delegate.get().size() == 0;
             }
 
             size_type size() const noexcept {
-                return delegate.size();
+                return delegate.get().size();
             }
 
             size_type max_size() const noexcept {
-                return 1U << delegate.buckets->maximum_hashpower();
+                return 1U << delegate.get().buckets->maximum_hashpower();
             }
 
             bool operator==(const unordered_map_view& other) const {
@@ -1230,32 +1230,32 @@ namespace std {
             }
 
             pair<iterator, bool> insert(const value_type& x) {
-                hash_value hv = delegate.hashed_key(x.first);
-                auto b = delegate.snapshot_and_lock_two<private_impl::LOCKING_INACTIVE>(hv);
-                table_position pos = delegate.cuckoo_insert_loop(hv, b, x.first);
+                hash_value hv = delegate.get().hashed_key(x.first);
+                auto b = delegate.get().template snapshot_and_lock_two<private_impl::LOCKING_INACTIVE>(hv);
+                table_position pos = delegate.get().cuckoo_insert_loop(hv, b, x.first);
                 if (pos.status == ok) {
-                    delegate.add_to_bucket(pos.index, pos.slot, hv.partial,
-                                           x.first,
-                                           x.second);
+                    delegate.get().add_to_bucket(pos.index, pos.slot, hv.partial,
+                                                 x.first,
+                                                 x.second);
                 } else {
                     assert(pos.status == failure_key_duplicated);
                 }
-                return std::make_pair(iterator(&delegate.buckets, pos.index, pos.slot),
-                                      pos.status == ok);
+                return std::make_pair(iterator(&delegate.get().buckets, pos.index, pos.slot),
+                                               pos.status == ok);
             }
             pair<iterator, bool> insert(value_type&& x) {
-                hash_value hv = delegate.hashed_key(x.first);
-                auto b = delegate.snapshot_and_lock_two<private_impl::LOCKING_INACTIVE>(hv);
-                table_position pos = delegate.cuckoo_insert_loop(hv, b, x.first);
+                hash_value hv = delegate.get().hashed_key(x.first);
+                auto b = delegate.get().template snapshot_and_lock_two<private_impl::LOCKING_INACTIVE>(hv);
+                table_position pos = delegate.get().cuckoo_insert_loop(hv, b, x.first);
                 if (pos.status == ok) {
-                    delegate.add_to_bucket(pos.index, pos.slot, hv.partial,
-                                           std::move(const_cast<key_type&>(x.first)),
-                                           std::move(x.second));
+                    delegate.get().add_to_bucket(pos.index, pos.slot, hv.partial,
+                                                 std::move(const_cast<key_type&>(x.first)),
+                                                 std::move(x.second));
                 } else {
                     assert(pos.status == failure_key_duplicated);
                 }
-                return std::make_pair(iterator(&delegate.buckets, pos.index, pos.slot),
-                                      pos.status == ok);
+                return std::make_pair(iterator(&delegate.get().buckets, pos.index, pos.slot),
+                                               pos.status == ok);
             }
             void insert(initializer_list<value_type> il) {
                 for (auto pos = il.begin(); pos != il.end(); ++pos)  {
@@ -1269,67 +1269,57 @@ namespace std {
                 }
             }
 
-            //Do we need it?
-            template <typename... Args>
-            pair<iterator, bool> try_emplace(const key_type& k, Args&&... args) {
-                return emplace(k, std::forward(args)...);
-            }
-            template <typename... Args>
-            pair<iterator, bool> try_emplace(key_type&& k, Args&&... args) {
-                return emplace(std::forward(k), std::forward(args)...);
-            }
-
             template <class M>
             pair<iterator, bool> insert_or_assign(const key_type& key, M&& obj) {
-                hash_value hv = delegate.hashed_key(key);
-                auto b = delegate.snapshot_and_lock_two<private_impl::LOCKING_INACTIVE>(hv);
-                table_position pos = delegate.cuckoo_insert_loop(hv, b, key);
+                hash_value hv = delegate.get().hashed_key(key);
+                auto b = delegate.get().template snapshot_and_lock_two<private_impl::LOCKING_INACTIVE>(hv);
+                table_position pos = delegate.get().cuckoo_insert_loop(hv, b, key);
                 if (pos.status == ok) {
-                    delegate.add_to_bucket(pos.index, pos.slot, hv.partial,
+                    delegate.get().add_to_bucket(pos.index, pos.slot, hv.partial,
                                            key,
-                                           std::forward(obj));
+                                           std::forward<M>(obj));
                 } else {
                     assert(pos.status == failure_key_duplicated);
-                    b.element(pos.slot) = std::forward(obj);
+                    b.element(pos.slot) = std::forward<M>(obj);
                 }
-                return std::make_pair(iterator(delegate.buckets, pos.index, pos.slot),
+                return std::make_pair(iterator(delegate.get().buckets, pos.index, pos.slot),
                                       pos.status == ok);
             }
             template <class M>
             pair<iterator, bool> insert_or_assign(key_type&& key, M&& obj) {
-                hash_value hv = delegate.hashed_key(key);
-                auto b = delegate.snapshot_and_lock_two<private_impl::LOCKING_INACTIVE>(hv);
-                table_position pos = delegate.cuckoo_insert_loop(hv, b, key);
+                hash_value hv = delegate.get().hashed_key(key);
+                auto b = delegate.get().template snapshot_and_lock_two<private_impl::LOCKING_INACTIVE>(hv);
+                table_position pos = delegate.get().cuckoo_insert_loop(hv, b, key);
                 if (pos.status == ok) {
-                    delegate.add_to_bucket(pos.index, pos.slot, hv.partial,
-                                           std::forward(key),
-                                           std::forward(obj));
+                    delegate.get().add_to_bucket(pos.index, pos.slot, hv.partial,
+                                           std::forward<key_type>(key),
+                                           std::forward<M>(obj));
                 } else {
                     assert(pos.status == failure_key_duplicated);
-                    b.element(pos.slot) = std::forward(obj);
+                    b.element(pos.slot) = std::forward<M>(obj);
                 }
-                return std::make_pair(iterator(delegate.buckets, pos.index, pos.slot),
+                return std::make_pair(iterator(delegate.get().buckets, pos.index, pos.slot),
                                       pos.status == ok);
 
             }
 
             iterator erase(iterator position) {
-                delegate.del_from_bucket(position.bucket_index, position.bucket_position.slot);
-                iterator result(&delegate.buckets, position.bucket_index, position.bucket_position.slot);
+                delegate.get().del_from_bucket(position.bucket_index, position.bucket_position.slot);
+                iterator result(&delegate.get().buckets, position.bucket_index, position.bucket_position.slot);
                 return result;
             }
             iterator erase(const_iterator position) {
-                delegate.del_from_bucket(position.bucket_index, position.bucket_position.slot);
-                iterator result(&delegate.buckets, position.bucket_index, position.bucket_position.slot);
+                delegate.get().del_from_bucket(position.bucket_index, position.bucket_position.slot);
+                iterator result(&delegate.get().buckets, position.bucket_index, position.bucket_position.slot);
                 return result;
             }
             size_type erase(const key_type& key) {
-                const hash_value hv = delegate.hashed_key(key);
-                const auto guard = delegate.snapshot_and_lock_two<private_impl::LOCKING_INACTIVE>(hv);
+                const hash_value hv = delegate.get().hashed_key(key);
+                const auto guard = delegate.get().template snapshot_and_lock_two<private_impl::LOCKING_INACTIVE>(hv);
                 const table_position pos =
-                    delegate.cuckoo_find(key, hv.partial, guard.first(), guard.second());
+                    delegate.get().cuckoo_find(key, hv.partial, guard.first(), guard.second());
                 if (pos.status == ok) {
-                    delegate.del_from_bucket(pos.index, pos.slot);
+                    delegate.get().del_from_bucket(pos.index, pos.slot);
                     return 1;
                 } else {
                     return 0;
@@ -1340,12 +1330,17 @@ namespace std {
                 for (auto pos = first; pos != last; ++pos) {
                     erase(pos);
                 }
-                return iterator(delegate.buckets, last.bucket_index, last.slot);
+                return iterator(delegate.get().buckets, last.bucket_index, last.slot);
+            }
+
+            void swap(unordered_map_view& other) noexcept {
+                guard.swap(other.guard);
+                delegate.swap(other);
             }
 
             void clear() noexcept {
-                delegate.buckets.clear();
-                auto& locks = delegate.get_current_locks();
+                delegate.get().buckets.clear();
+                auto& locks = delegate.get().get_current_locks();
                 for (size_type i = 0; i < locks.size(); ++i) {
                     locks[i].elem_counter() = 0;
                 }
@@ -1365,34 +1360,34 @@ namespace std {
 
             // observers:
             allocator_type get_allocator() const {
-                return delegate.get_allocator();
+                return delegate.get().get_allocator();
             }
             hasher hash_function() const {
-                return delegate.hash_function();
+                return delegate.get().hash_function();
             }
             key_equal key_eq() const {
-                return delegate.key_eq();
+                return delegate.get().key_eq();
             }
 
             // map operations:
             iterator find(const key_type& key) {
-                const hash_value hashvalue = delegate.hashed_key(key);
-                const auto guard = delegate.snapshot_and_lock_two<private_impl::LOCKING_INACTIVE>(hashvalue);
-                const table_position pos = delegate.cuckoo_find(key, hashvalue.partial,
+                const hash_value hashvalue = delegate.get().hashed_key(key);
+                const auto guard = delegate.get().template snapshot_and_lock_two<private_impl::LOCKING_INACTIVE>(hashvalue);
+                const table_position pos = delegate.get().cuckoo_find(key, hashvalue.partial,
                                                                 guard.first(), guard.second());
                 if (pos.status == ok) {
-                    return iterator(&delegate.buckets, pos.index, pos.slot);
+                    return iterator(&delegate.get().buckets, pos.index, pos.slot);
                 } else {
                     return end();
                 }
             }
             const_iterator find(const key_type& key) const {
-                const hash_value hashvalue = delegate.hashed_key(key);
-                const auto guard = delegate.snapshot_and_lock_two<private_impl::LOCKING_INACTIVE>(hashvalue);
-                const table_position pos = delegate.cuckoo_find(key, hashvalue.partial,
+                const hash_value hashvalue = delegate.get().hashed_key(key);
+                const auto guard = delegate.get().template snapshot_and_lock_two<private_impl::LOCKING_INACTIVE>(hashvalue);
+                const table_position pos = delegate.get().cuckoo_find(key, hashvalue.partial,
                                                                 guard.first(), guard.second());
                 if (pos.status == ok) {
-                    return const_iterator(&delegate.buckets, pos.index, pos.slot);
+                    return const_iterator(&delegate.get().buckets, pos.index, pos.slot);
                 } else {
                     return cend();
                 }
@@ -1442,7 +1437,7 @@ namespace std {
             }
 
             size_type bucket_count() const {
-                return delegate.buckets.size();
+                return delegate.get().buckets.size();
             }
 
             size_type max_bucket_count() const {
@@ -1451,7 +1446,7 @@ namespace std {
 
             size_type bucket_size(size_type n) {
                 size_type result = 0;
-                const auto& bucket = delegate.buckets[n];
+                const auto& bucket = delegate.get().buckets[n];
                 for (size_type i = 0; i < SLOTS_PER_BUCKET; ++i) {
                     if (bucket.occupied(i)) {
                         ++result;
@@ -1460,39 +1455,40 @@ namespace std {
                 return result;
             }
             size_type bucket(const key_type& key) const {
-                const hash_value hv = delegate.hashed_key(key);
-                const auto guard = delegate.snapshot_and_lock_two<private_impl::LOCKING_INACTIVE>(hv);
+                const hash_value hv = delegate.get().hashed_key(key);
+                const auto guard = delegate.get().template snapshot_and_lock_two<private_impl::LOCKING_INACTIVE>(hv);
                 const table_position pos =
-                    delegate.cuckoo_find(key, hv.partial, guard.first(), guard.second());
+                    delegate.get().cuckoo_find(key, hv.partial, guard.first(), guard.second());
                 return bucket_size(pos.index);
             }
 
             local_iterator begin(size_type n) {
-                return local_iterator::begin(&delegate.buckets[n]);
+                return local_iterator::begin(&delegate.get().buckets[n]);
             }
             const_local_iterator begin(size_type n) const {
-                return const_local_iterator::begin(&delegate.buckets[n]);
+                return const_local_iterator::begin(&delegate.get().buckets[n]);
             }
             local_iterator end(size_type n) {
-                return local_iterator::end(&delegate.buckets[n]);
+                return local_iterator::end(&delegate.get().buckets[n]);
             }
             const_local_iterator end(size_type n) const {
-                return const_local_iterator::end(&delegate.buckets[n]);
+                return const_local_iterator::end(&delegate.get().buckets[n]);
             }
             const_local_iterator cbegin(size_type n) const {
-                return const_local_iterator::begin(&delegate.buckets[n]);
+                return const_local_iterator::begin(&delegate.get().buckets[n]);
             }
             const_local_iterator cend(size_type n) const {
-                return const_local_iterator::end(&delegate.buckets[n]);
+                return const_local_iterator::end(&delegate.get().buckets[n]);
             }
 
             // hash policy:
-            float load_factor() const noexcept {
-                return delegate.load_factor();
+            void rehash(size_type n) {
+                delegate.get().template cuckoo_expand_simple<private_impl::LOCKING_INACTIVE, manual_resize>(n);
             }
 
-            void rehash(size_type n) {
-                delegate.cuckoo_expand_simple<private_impl::LOCKING_INACTIVE, manual_resize>(n);
+            float load_factor() const noexcept {
+                return delegate.get().load_factor();
+                return delegate.get().load_factor();
             }
 
         private:
@@ -1538,7 +1534,9 @@ namespace std {
             {
                 all_locks.emplace_back(std::min(n, size_type(std::private_impl::MAX_NUM_LOCKS)),
                                    std::private_impl::spinlock(), get_allocator());
-                insert(first, last);
+                for (auto i = first; i != last; ++i) {
+                    emplace(i->first, i->second);
+                }
             }
         concurrent_unordered_map(const allocator_type& allocator)
             : allocator(allocator)
@@ -1583,7 +1581,9 @@ namespace std {
             {
                 all_locks.emplace_back(std::min(n, size_type(std::private_impl::MAX_NUM_LOCKS)),
                                    std::private_impl::spinlock(), get_allocator());
-                insert(il.begin(), il.end());
+                for (auto i = il.begin(); i != il.end(); ++i) {
+                    emplace(i->first, i->second);
+                }
             }
 
         ~concurrent_unordered_map() = default;
@@ -1618,35 +1618,23 @@ namespace std {
 
         concurrent_unordered_map& operator=(initializer_list<value_type> il) {
             {
-                //TODO: FIXME
-                auto locked_table = make_unordered_map_view();
+                auto locked_table = make_unordered_map_view(true);
                 locked_table.clear();
                 locked_table.insert(il.begin(), il.end());
             }
             return *this;
         }
 
-        void swap(concurrent_unordered_map& other) noexcept {
-            std::swap(hash, other.hash);
-            std::swap(key_comparator, other.key_comparator);
-            buckets.swap(other.buckets);
-            all_locks.swap(other.all_locks);
-
-            other.minimum_load_factor_holder.store(
-                    minimum_load_factor_holder.exchange(other.minimum_load_factor(), std::memory_order_release),
-                    std::memory_order_release);
-            other.maximum_hash_power_holder.store(
-                    maximum_hash_power_holder.exchange(other.maximum_hashpower(), std::memory_order_release),
-                    std::memory_order_release);
+        allocator_type get_allocator() const {
+            return allocator;
         }
 
-        void clear() noexcept {
-            auto unlocker = snapshot_and_lock_all<private_impl::LOCKING_ACTIVE>();
-            buckets.clear();
-            auto& locks = get_current_locks();
-            for (size_type i = 0; i < locks.size(); ++i) {
-                locks[i].elem_counter() = 0;
-            }
+        hasher hash_function() const {
+            return hash;
+        }
+
+        key_equal key_eq() const {
+            return key_comparator;
         }
 
         // concurrent-safe element retrieval:
@@ -1656,7 +1644,7 @@ namespace std {
             const table_position pos = cuckoo_find(key, hashvalue.partial,
                                                    guard.first(), guard.second());
             if (pos.status == ok) {
-                return experimental::make_optional(std::move(buckets[pos.index].mapped(pos.slot)));
+                return experimental::make_optional(buckets[pos.index].mapped(pos.slot));
             }
             return {};
         }
@@ -1666,19 +1654,6 @@ namespace std {
         }
 
         // concurrent-safe modifiers:
-        template <typename K, typename... Args>
-        bool emplace(K&& key, Args&&... val) {
-            hash_value hv = hashed_key(key);
-            auto b = snapshot_and_lock_two<private_impl::LOCKING_ACTIVE>(hv);
-            table_position pos = cuckoo_insert_loop(hv, b, key);
-            if (pos.status == ok) {
-                add_to_bucket(pos.index, pos.slot, hv.partial, std::forward<K>(key),
-                              std::forward<Args>(val)...);
-            }
-
-            return pos.status == ok;
-        }
-
         template <typename F>
         bool visit(const key_type& key, F functor) {
             const hash_value hashvalue = hashed_key(key);
@@ -1736,17 +1711,18 @@ namespace std {
             return pos.status == ok;
         }
 
-        bool insert(const value_type& x) {
-            return emplace(x.first, x.second);
-        }
-        bool insert(value_type&& x) {
-            return emplace(std::move(x.first), std::move(x.second));
-        }
-        template<class InputIterator>
-        void insert(InputIterator first, InputIterator last) {
-            for (auto i = first; i != last; ++i) {
-                insert(*i);
+        template <typename K, typename... Args>
+        bool emplace(K&& key, Args&&... val) {
+            hash_value hv = hashed_key(key);
+            auto b = snapshot_and_lock_two<private_impl::LOCKING_ACTIVE>(hv);
+            table_position pos = cuckoo_insert_loop(hv, b, key);
+            if (pos.status == ok) {
+                add_to_bucket(pos.index, pos.slot, hv.partial,
+                              std::forward<K>(key),
+                              std::forward<Args>(val)...);
             }
+
+            return pos.status == ok;
         }
 
         template <typename K, typename... Args>
@@ -1769,18 +1745,6 @@ namespace std {
             return pos.status == ok;
         }
 
-        size_type update(const key_type& key, const mapped_type& val) {
-            const hash_value hv = hashed_key(key);
-            const auto guard = snapshot_and_lock_two<private_impl::LOCKING_ACTIVE>(hv);
-            const table_position pos = cuckoo_find(key, hv.partial, guard.first(), guard.second());
-            if (pos.status == ok) {
-                buckets[pos.index].mapped(pos.slot) = val;
-                return 1;
-            } else {
-                return 0;
-            }
-        }
-
         template<typename K, typename... Args>
         size_type update(K&& key, Args&&... val) {
             const hash_value hv = hashed_key(key);
@@ -1794,13 +1758,30 @@ namespace std {
             }
         }
 
-        size_type erase(const key_type& key) {
+        template<typename K>
+        size_type erase(K&& key) {
             const hash_value hv = hashed_key(key);
             const auto guard = snapshot_and_lock_two<private_impl::LOCKING_ACTIVE>(hv);
             const table_position pos =
-            cuckoo_find(key, hv.partial, guard.first(), guard.second());
+            cuckoo_find(std::forward<K>(key), hv.partial, guard.first(), guard.second());
             if (pos.status == ok) {
                 del_from_bucket(pos.index, pos.slot);
+                return 1;
+            } else {
+                return 0;
+            }
+        }
+
+        template<typename K, typename F>
+        size_type erase_and_visit(K&& key, F functor) {
+            const hash_value hv = hashed_key(key);
+            const auto guard = snapshot_and_lock_two<private_impl::LOCKING_ACTIVE>(hv);
+            const table_position pos =
+                    cuckoo_find(std::forward<K>(key), hv.partial, guard.first(), guard.second());
+            if (pos.status == ok) {
+                if (functor(buckets[pos.index].mapped(pos.slot))) {
+                    del_from_bucket(pos.index, pos.slot);
+                }
                 return 1;
             } else {
                 return 0;
@@ -1818,16 +1799,27 @@ namespace std {
             insert(locked_table.begin(), locked_table.end());
         }
 
-        allocator_type get_allocator() const {
-            return allocator;
+        void swap(concurrent_unordered_map& other) noexcept {
+            std::swap(hash, other.hash);
+            std::swap(key_comparator, other.key_comparator);
+            buckets.swap(other.buckets);
+            all_locks.swap(other.all_locks);
+
+            other.minimum_load_factor_holder.store(
+                    minimum_load_factor_holder.exchange(other.minimum_load_factor(), std::memory_order_release),
+                    std::memory_order_release);
+            other.maximum_hash_power_holder.store(
+                    maximum_hash_power_holder.exchange(other.maximum_hashpower(), std::memory_order_release),
+                    std::memory_order_release);
         }
 
-        hasher hash_function() const {
-            return hash;
-        }
-
-        key_equal key_eq() const {
-            return key_comparator;
+        void clear() noexcept {
+            auto unlocker = snapshot_and_lock_all<private_impl::LOCKING_ACTIVE>();
+            buckets.clear();
+            auto& locks = get_current_locks();
+            for (size_type i = 0; i < locks.size(); ++i) {
+                locks[i].elem_counter() = 0;
+            }
         }
 
     private:
@@ -1950,7 +1942,7 @@ namespace std {
         }
 
         template <typename K>
-        table_position cuckoo_find(const K &key, const partial_t partial,
+        table_position cuckoo_find(const K& key, const partial_t partial,
                                    const size_type first, const size_type second) const {
             int slot = try_read_from_bucket(buckets[first], partial, key);
             if (slot != -1) {
