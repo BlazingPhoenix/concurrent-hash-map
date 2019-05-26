@@ -555,39 +555,44 @@ void run_test(M& m, Operation op, const std::string& description,
 
 int main(int argc, char **argv) {
     srand(13213);
-    for (unsigned thread_count : { 1, 2, 4, 8, 16, 32, 64, 128 }) {
-        std::cout << "Thread count: " << thread_count << std::endl;
 
-        boost::synchronized_value<std::unordered_map<unsigned, unsigned>> m0;
-        run_test(m0, [](boost::synchronized_value<std::unordered_map<unsigned, unsigned>>& m,
-                        unsigned key, unsigned val, bool need_write) {
-                     auto i = m->find(key);
+    for (unsigned write_faction_denominator : { 1, 2, 5, 10, 20 }) {
+        std::cout << "Write fraction: 1/" << write_faction_denominator << std::endl;
+        for (unsigned thread_count : { 1, 2, 4, 8, 16, 32, 64 }) {
+            std::cout << "Thread count: " << thread_count << std::endl;
 
-                     if (need_write) {
-                         m->insert_or_assign(key, val);
-                     }
-                 }, "Default syncronized map", thread_count, 1.0 / 20);
+            boost::synchronized_value<std::unordered_map<unsigned, unsigned>> m0;
+            run_test(m0, [](boost::synchronized_value<std::unordered_map<unsigned, unsigned>>& m,
+                            unsigned key, unsigned val, bool need_write) {
+                         auto i = m->find(key);
 
-        std::concurrent_unordered_map<unsigned, unsigned> m1;
-        run_test(m1, [](std::concurrent_unordered_map<unsigned, unsigned>& m,
-                        unsigned key, unsigned val, bool need_write) {
-                     unsigned old;
-                     m.find(key, old);
+                         if (need_write) {
+                             m->emplace(key, val);
+                         }
+                     }, "Default syncronized map", thread_count, 1.0 / write_faction_denominator);
 
-                     if (need_write) {
-                         m.insert_or_assign(key, val);
-                     }
-                 }, "std concurrent hash map", thread_count, 1.0 / 20);
+            std::concurrent_unordered_map<unsigned, unsigned> m1(TEST_ITERATIONS);
+            run_test(m1, [](std::concurrent_unordered_map<unsigned, unsigned>& m,
+                            unsigned key, unsigned val, bool need_write) {
+                         unsigned old;
+                         m.find(key, old);
 
-        concurrent_unordered_map<unsigned, unsigned> m2(thread_count);
-        run_test(m2, [](concurrent_unordered_map<unsigned, unsigned>& m,
-                        unsigned key, unsigned val, bool need_write) {
-                     m.find(key);
+                         if (need_write) {
+                             m.emplace(key, val);
+                         }
+                     }, "std concurrent hash map", thread_count, 1.0 / write_faction_denominator);
 
-                     if (need_write) {
-                         m.insert_or_assign(key, val);
-                     } 
-                 }, "Collision list based syncronized map", thread_count, 1.0 / 20);
+            concurrent_unordered_map<unsigned, unsigned> m2(thread_count);
+            run_test(m2, [](concurrent_unordered_map<unsigned, unsigned>& m,
+                            unsigned key, unsigned val, bool need_write) {
+                         m.find(key);
+
+                         if (need_write) {
+                             m.emplace(key, val);
+                         }
+                     }, "Collision list based syncronized map", thread_count, 1.0 / write_faction_denominator);
+        }
+        std::cout << std::endl;
     }
 
     return 0;
