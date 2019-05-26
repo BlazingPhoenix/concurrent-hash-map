@@ -17,6 +17,7 @@ add_test(NAME stress_checked COMMAND stress_checked)
 
 find_package(Boost COMPONENTS system thread REQUIRED)
 include_directories(${Boost_INCLUDE_DIRS})
+include_directories(${Libcuckoo_INCLUDE_DIRS})
 add_executable(benchmark benchmark.cpp)
 target_link_libraries(benchmark
         PRIVATE ${Boost_SYSTEM_LIBRARY}

@@ -9,6 +9,8 @@
 #include <cassert>
 #include <functional>
 
+#include <libcuckoo/cuckoohash_map.hh>
+
 #include <boost/thread/synchronized_value.hpp>
 #include <boost/iterator/indirect_iterator.hpp>
 
@@ -591,6 +593,16 @@ int main(int argc, char **argv) {
                              m.emplace(key, val);
                          }
                      }, "Collision list based syncronized map", thread_count, 1.0 / write_faction_denominator);
+            cuckoohash_map<unsigned, unsigned> m3;
+            run_test(m3, [](cuckoohash_map<unsigned, unsigned>& m,
+                            unsigned key, unsigned val, bool need_write) {
+                         unsigned old;
+                         m.find(key, old);
+
+                         if (need_write) {
+                             m.insert(key, val);
+                         }
+                     }, "libcuckoo hash map", thread_count, 1.0 / write_faction_denominator);
         }
         std::cout << std::endl;
     }
