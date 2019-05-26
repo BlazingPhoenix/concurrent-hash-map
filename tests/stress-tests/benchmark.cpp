@@ -355,11 +355,11 @@ public:
         std::lock_guard<Locable> guard(bucket_mutexes[bucket_id]);
         auto iter = buckets[bucket_id].find(key);
         if (iter != buckets[bucket_id].end()) {
-            *iter = obj;
+            iter->second = obj;
             return make_pair(iterator(this, iter, bucket_id), false);
         }
 
-        return insert(make_pair(key, std::forward<M>(obj)));
+        return insert(std::make_pair(key, std::forward<M>(obj)));
     }
 
     template<class K, class... Args>
@@ -512,20 +512,19 @@ private:
 };
 
 constexpr int TEST_ITERATIONS = 1000 * 1000;
-constexpr int MAX_KEY = 100 * 1000;
-constexpr int THREAD_COUNT = 120;
 
 template<typename M, typename Operation>
-void test_thread(M& m, Operation op) {
+void test_thread(M& m, Operation op, float write_ratio) {
     std::random_device r;
     std::default_random_engine e(r());
-    std::uniform_int_distribution<int> uniform_dist(1, MAX_KEY);
-    std::uniform_int_distribution<int> uniform_dist2(1, 20);
+    std::uniform_int_distribution<unsigned> key_dist(1, std::numeric_limits<unsigned>::max());
+    std::uniform_int_distribution<unsigned> value_dist(1, std::numeric_limits<unsigned>::max());
+    std::uniform_int_distribution<unsigned> write_ratio_dist(1, 100);
     for (int i = 0; i < TEST_ITERATIONS; ++i) {
-        int val = uniform_dist(e);
-        int rnd = uniform_dist2(e);
-        std::string key = std::to_string(val);
-        op(m, key, val, rnd);
+        unsigned key = key_dist(e);
+        unsigned val = value_dist(e);
+        bool need_write = write_ratio_dist(e) <= static_cast<unsigned>(write_ratio * 100);
+        op(m, key, val, need_write);
     }
 }
 
@@ -535,12 +534,13 @@ long long get_time_ms() {
 }
 
 template<typename M, typename Operation>
-void run_test(M& m, Operation op, const std::string& description, unsigned thread_count) {
+void run_test(M& m, Operation op, const std::string& description,
+              unsigned thread_count, float write_ratio) {
     auto start_time = get_time_ms();
 
     std::vector<std::thread> threads;
     for (int i = 0; i < thread_count; ++i) {
-        std::thread t([&m, op] { test_thread(m, op); });
+        std::thread t([&m, op, write_ratio] { test_thread(m, op, write_ratio); });
         threads.push_back(std::move(t));
     }
 
@@ -558,50 +558,36 @@ int main(int argc, char **argv) {
     for (unsigned thread_count : { 1, 2, 4, 8, 16, 32, 64, 128 }) {
         std::cout << "Thread count: " << thread_count << std::endl;
 
-        boost::synchronized_value<std::unordered_map<std::string, int>> m0;
-        run_test(m0, [](boost::synchronized_value<std::unordered_map<std::string, int>>& m,
-                        const std::string& key, int val, int rnd) {
+        boost::synchronized_value<std::unordered_map<unsigned, unsigned>> m0;
+        run_test(m0, [](boost::synchronized_value<std::unordered_map<unsigned, unsigned>>& m,
+                        unsigned key, unsigned val, bool need_write) {
                      auto i = m->find(key);
 
-                     if (i == m->end()) {
-                         m->insert(make_pair(key, val));
-                     } else {
-                         if (rnd == 0) {
-                             i->second += val;
-                         }
+                     if (need_write) {
+                         m->insert_or_assign(key, val);
                      }
-                 }, "Default syncronized map", thread_count);
+                 }, "Default syncronized map", thread_count, 1.0 / 20);
 
-        std::concurrent_unordered_map<std::string, int> m2(MAX_KEY);
-        run_test(m2, [](std::concurrent_unordered_map<std::string, int>& m,
-                        const std::string& key, int val, int rnd) {
-                     int old;
-                     auto i = m.find(key, old);
+        std::concurrent_unordered_map<unsigned, unsigned> m1;
+        run_test(m1, [](std::concurrent_unordered_map<unsigned, unsigned>& m,
+                        unsigned key, unsigned val, bool need_write) {
+                     unsigned old;
+                     m.find(key, old);
 
-                     if (!i) {
-                         m.insert(std::make_pair(key, val));
-                     } else {
-                         if (rnd == 0) {
-                             m.update(key, old + val);
-                         }
+                     if (need_write) {
+                         m.insert_or_assign(key, val);
                      }
-                 }, "std concurrent hash map", thread_count);
+                 }, "std concurrent hash map", thread_count, 1.0 / 20);
 
-        concurrent_unordered_map<std::string, int> m4(thread_count);
-        run_test(m4, [](concurrent_unordered_map<std::string, int>& m,
-                        const std::string& key, int val, int rnd) {
-                     m.count(key);
-                     auto i = m.find(key);
+        concurrent_unordered_map<unsigned, unsigned> m2(thread_count);
+        run_test(m2, [](concurrent_unordered_map<unsigned, unsigned>& m,
+                        unsigned key, unsigned val, bool need_write) {
+                     m.find(key);
 
-                     if (i == m.end()) {
-                         m.insert(make_pair(key, val));
-                     } else {
-                         if (rnd == 0) {
-                             i->second += val;
-                         }
-                     }
-
-                 }, "Collision list based syncronized map", thread_count);
+                     if (need_write) {
+                         m.insert_or_assign(key, val);
+                     } 
+                 }, "Collision list based syncronized map", thread_count, 1.0 / 20);
     }
 
     return 0;
