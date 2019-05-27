@@ -387,6 +387,7 @@ namespace std {
             size_t& elem_counter() noexcept {
                 return counter;
             }
+
             size_t elem_counter() const noexcept {
                 return counter;
             }
@@ -394,6 +395,70 @@ namespace std {
         private:
             std::atomic_flag flag;
             size_t counter;
+        };
+
+        class versioned_synchronizer {
+        public:
+            typedef size_t version_type;
+
+            versioned_synchronizer() = default;
+
+            versioned_synchronizer(const versioned_synchronizer& other)
+                : writelock(other.writelock)
+                , version(other.version.load(std::memory_order_acquire))
+            {
+            }
+
+            versioned_synchronizer& operator = (const versioned_synchronizer& other) {
+                version.store(other.version.load(std::memory_order_acquire),
+                              std::memory_order_release);
+                return *this;
+            }
+
+            version_type read_lock() const {
+                version_type result = version.load(std::memory_order_acquire);
+                while ((result & 1) == 1) {
+                    result = version.load(std::memory_order_acquire);
+                }
+                return result;
+            }
+
+            bool try_read_unlock(version_type version) const {
+                return this->version.load(std::memory_order_acquire) == version;
+            }
+
+            template <typename LOCK_TYPE>
+            void write_lock(LOCK_TYPE type) {
+                writelock.lock(type);
+                version.fetch_add(std::memory_order_release);
+            }
+
+            template <typename LOCK_TYPE>
+            bool try_write_lock(LOCK_TYPE type) {
+                if (writelock.try_lock(type)) {
+                    version.fetch_add(std::memory_order_release);
+                    return true;
+                }
+                return false;
+            }
+
+            template <typename LOCK_TYPE>
+            void write_unlock(LOCK_TYPE type) {
+                version.fetch_add(std::memory_order_release);
+                writelock.unlock(type);
+            }
+
+            size_t& elem_counter() noexcept {
+                return writelock.elem_counter();
+            }
+
+            size_t elem_counter() const noexcept {
+                return writelock.elem_counter();
+            }
+
+        private:
+            spinlock writelock;
+            std::atomic<version_type> version;
         };
 
         /**
@@ -803,13 +868,13 @@ namespace std {
         using bucket = typename buckets_t::bucket;
 
         template <typename LOCK_TYPE>
-        class all_buckets_guard;
+        class all_buckets_write_guard;
 
     public:
 
         class unordered_map_view {
             std::reference_wrapper<concurrent_unordered_map<Key, Value, Hasher, Equality, Allocator>> delegate;
-            all_buckets_guard<std::private_impl::LOCKING_ACTIVE> guard;
+            all_buckets_write_guard<std::private_impl::LOCKING_ACTIVE> guard;
 
         public:
             // types:
@@ -1231,7 +1296,7 @@ namespace std {
 
             pair<iterator, bool> insert(const value_type& x) {
                 hash_value hv = delegate.get().hashed_key(x.first);
-                auto b = delegate.get().template snapshot_and_lock_two<private_impl::LOCKING_INACTIVE>(hv);
+                auto b = delegate.get().template snapshot_and_write_lock_two<private_impl::LOCKING_INACTIVE>(hv);
                 table_position pos = delegate.get().cuckoo_insert_loop(hv, b, x.first);
                 if (pos.status == ok) {
                     delegate.get().add_to_bucket(pos.index, pos.slot, hv.partial,
@@ -1245,7 +1310,7 @@ namespace std {
             }
             pair<iterator, bool> insert(value_type&& x) {
                 hash_value hv = delegate.get().hashed_key(x.first);
-                auto b = delegate.get().template snapshot_and_lock_two<private_impl::LOCKING_INACTIVE>(hv);
+                auto b = delegate.get().template snapshot_and_write_lock_two<private_impl::LOCKING_INACTIVE>(hv);
                 table_position pos = delegate.get().cuckoo_insert_loop(hv, b, x.first);
                 if (pos.status == ok) {
                     delegate.get().add_to_bucket(pos.index, pos.slot, hv.partial,
@@ -1272,7 +1337,7 @@ namespace std {
             template <class M>
             pair<iterator, bool> insert_or_assign(const key_type& key, M&& obj) {
                 hash_value hv = delegate.get().hashed_key(key);
-                auto b = delegate.get().template snapshot_and_lock_two<private_impl::LOCKING_INACTIVE>(hv);
+                auto b = delegate.get().template snapshot_and_write_lock_two<private_impl::LOCKING_INACTIVE>(hv);
                 table_position pos = delegate.get().cuckoo_insert_loop(hv, b, key);
                 if (pos.status == ok) {
                     delegate.get().add_to_bucket(pos.index, pos.slot, hv.partial,
@@ -1288,7 +1353,7 @@ namespace std {
             template <class M>
             pair<iterator, bool> insert_or_assign(key_type&& key, M&& obj) {
                 hash_value hv = delegate.get().hashed_key(key);
-                auto b = delegate.get().template snapshot_and_lock_two<private_impl::LOCKING_INACTIVE>(hv);
+                auto b = delegate.get().template snapshot_and_write_lock_two<private_impl::LOCKING_INACTIVE>(hv);
                 table_position pos = delegate.get().cuckoo_insert_loop(hv, b, key);
                 if (pos.status == ok) {
                     delegate.get().add_to_bucket(pos.index, pos.slot, hv.partial,
@@ -1315,7 +1380,7 @@ namespace std {
             }
             size_type erase(const key_type& key) {
                 const hash_value hv = delegate.get().hashed_key(key);
-                const auto guard = delegate.get().template snapshot_and_lock_two<private_impl::LOCKING_INACTIVE>(hv);
+                const auto guard = delegate.get().template snapshot_and_write_lock_two<private_impl::LOCKING_INACTIVE>(hv);
                 const table_position pos =
                     delegate.get().cuckoo_find(key, hv.partial, guard.first(), guard.second());
                 if (pos.status == ok) {
@@ -1372,7 +1437,7 @@ namespace std {
             // map operations:
             iterator find(const key_type& key) {
                 const hash_value hashvalue = delegate.get().hashed_key(key);
-                const auto guard = delegate.get().template snapshot_and_lock_two<private_impl::LOCKING_INACTIVE>(hashvalue);
+                const auto guard = delegate.get().template snapshot_and_write_lock_two<private_impl::LOCKING_INACTIVE>(hashvalue);
                 const table_position pos = delegate.get().cuckoo_find(key, hashvalue.partial,
                                                                 guard.first(), guard.second());
                 if (pos.status == ok) {
@@ -1383,13 +1448,13 @@ namespace std {
             }
             const_iterator find(const key_type& key) const {
                 const hash_value hashvalue = delegate.get().hashed_key(key);
-                const auto guard = delegate.get().template snapshot_and_lock_two<private_impl::LOCKING_INACTIVE>(hashvalue);
+                const auto guard = delegate.get().template snapshot_and_write_lock_two<private_impl::LOCKING_INACTIVE>(hashvalue);
                 const table_position pos = delegate.get().cuckoo_find(key, hashvalue.partial,
                                                                 guard.first(), guard.second());
                 if (pos.status == ok) {
-                    return const_iterator(&delegate.get().buckets, pos.index, pos.slot);
+                    return iterator(&delegate.get().buckets, pos.index, pos.slot);
                 } else {
-                    return cend();
+                    return end();
                 }
             }
             size_type count(const key_type& key) const {
@@ -1456,7 +1521,7 @@ namespace std {
             }
             size_type bucket(const key_type& key) const {
                 const hash_value hv = delegate.get().hashed_key(key);
-                const auto guard = delegate.get().template snapshot_and_lock_two<private_impl::LOCKING_INACTIVE>(hv);
+                const auto guard = delegate.get().template snapshot_and_write_lock_two<private_impl::LOCKING_INACTIVE>(hv);
                 const table_position pos =
                     delegate.get().cuckoo_find(key, hv.partial, guard.first(), guard.second());
                 return bucket_size(pos.index);
@@ -1493,9 +1558,9 @@ namespace std {
 
         private:
             unordered_map_view(concurrent_unordered_map<Key, Value, Hasher, Equality, Allocator>& delegate,
-                               all_buckets_guard<std::private_impl::LOCKING_ACTIVE>&& guard)
+                               all_buckets_write_guard<std::private_impl::LOCKING_ACTIVE>&& guard)
                     : delegate(delegate)
-                    , guard(std::forward<all_buckets_guard<std::private_impl::LOCKING_ACTIVE>>(guard))
+                    , guard(std::forward<all_buckets_write_guard<std::private_impl::LOCKING_ACTIVE>>(guard))
             {
             }
             friend concurrent_unordered_map;
@@ -1514,9 +1579,8 @@ namespace std {
             , minimum_load_factor_holder(private_impl::DEFAULT_MINIMUM_LOAD_FACTOR)
             , maximum_hash_power_holder(private_impl::NO_MAXIMUM_HASHPOWER)
             {
-                std::private_impl::spinlock x;
                 all_locks.emplace_back(std::min(bucket_count(), size_type(std::private_impl::MAX_NUM_LOCKS)),
-                                   std::private_impl::spinlock(), allocator);
+                                       std::private_impl::versioned_synchronizer(), allocator);
             }
         template <typename InputIterator>
         concurrent_unordered_map(InputIterator first, InputIterator last,
@@ -1533,7 +1597,7 @@ namespace std {
             , maximum_hash_power_holder(private_impl::NO_MAXIMUM_HASHPOWER)
             {
                 all_locks.emplace_back(std::min(n, size_type(std::private_impl::MAX_NUM_LOCKS)),
-                                   std::private_impl::spinlock(), get_allocator());
+                                       std::private_impl::versioned_synchronizer(), get_allocator());
                 for (auto i = first; i != last; ++i) {
                     emplace(i->first, i->second);
                 }
@@ -1580,7 +1644,7 @@ namespace std {
             , maximum_hash_power_holder(private_impl::NO_MAXIMUM_HASHPOWER)
             {
                 all_locks.emplace_back(std::min(n, size_type(std::private_impl::MAX_NUM_LOCKS)),
-                                   std::private_impl::spinlock(), get_allocator());
+                                   std::private_impl::versioned_synchronizer(), get_allocator());
                 for (auto i = il.begin(); i != il.end(); ++i) {
                     emplace(i->first, i->second);
                 }
@@ -1590,7 +1654,7 @@ namespace std {
 
         unordered_map_view make_unordered_map_view(bool lock = false) noexcept {
             if (lock) {
-                auto guard = snapshot_and_lock_all<std::private_impl::LOCKING_ACTIVE>();
+                auto guard = snapshot_and_write_lock_all<std::private_impl::LOCKING_ACTIVE>();
                 return unordered_map_view(*this, std::move(guard));
             } else {
                 return unordered_map_view(*this);
@@ -1640,13 +1704,18 @@ namespace std {
         // concurrent-safe element retrieval:
         experimental::optional<mapped_type> find(const key_type& key) const {
             const hash_value hashvalue = hashed_key(key);
-            const auto guard = snapshot_and_lock_two<private_impl::LOCKING_ACTIVE>(hashvalue);
-            const table_position pos = cuckoo_find(key, hashvalue.partial,
-                                                   guard.first(), guard.second());
-            if (pos.status == ok) {
-                return experimental::make_optional(buckets[pos.index].mapped(pos.slot));
-            }
-            return {};
+            experimental::optional<mapped_type> result;
+            auto reader = [this, &result, &key, &hashvalue] (size_type first_index,
+                                                             size_type second_index) {
+                const table_position pos = cuckoo_find(key, hashvalue.partial,
+                                                       first_index, second_index);
+                if (pos.status == ok) {
+                    result = experimental::make_optional(buckets[pos.index].mapped(pos.slot));
+                }
+            };
+            const auto guard = snapshot_and_read_lock_two<decltype(reader)>(hashvalue);
+            guard.run(reader);
+            return result;
         }
 
         mapped_type find(const key_type& key, const mapped_type& default_value) const {
@@ -1657,7 +1726,7 @@ namespace std {
         template <typename F>
         bool visit(const key_type& key, F functor) {
             const hash_value hashvalue = hashed_key(key);
-            const auto guard = snapshot_and_lock_two<private_impl::LOCKING_ACTIVE>(hashvalue);
+            const auto guard = snapshot_and_write_lock_two<private_impl::LOCKING_ACTIVE>(hashvalue);
             const table_position pos = cuckoo_find(key, hashvalue.partial,
                                                    guard.first(), guard.second());
             if (pos.status == ok) {
@@ -1667,11 +1736,30 @@ namespace std {
             return false;
         }
 
+        template <typename F>
+        bool visit(const key_type& key, F functor) const {
+            const hash_value hashvalue = hashed_key(key);
+            bool result = false;
+            auto visitor = [this, &result, &key, &functor, &hashvalue] (size_type first_index,
+                                                                        size_type second_index) {
+                const table_position pos = cuckoo_find(key, hashvalue.partial,
+                                                       first_index, second_index);
+                if (pos.status == ok) {
+                    functor(buckets[pos.index].mapped(pos.slot));
+                    result = true;
+                }
+            };
+
+            const auto guard = snapshot_and_read_lock_two<decltype(visitor)>(hashvalue);
+            guard.run(visitor);
+            return result;
+        }
+
         template<typename F>
         void visit_all(F functor) {
             locks_t& locks = get_current_locks();
             for (auto i = 0; i < locks.size(); ++i) {
-                bucket_guard guard(&locks, i);
+                bucket_write_guard guard(&locks, i);
                 const auto& bucket = buckets[i];
 
                 for (size_type j = 0; j < SLOTS_PER_BUCKET; ++j) {
@@ -1686,7 +1774,7 @@ namespace std {
         void visit_all(F functor) const {
             locks_t& locks = get_current_locks();
             for (auto i = 0; i < locks.size(); ++i) {
-                bucket_guard guard(&locks, i);
+                bucket_write_guard guard(&locks, i);
                 const auto& bucket = buckets[i];
 
                 for (size_type j = 0; j < SLOTS_PER_BUCKET; ++j) {
@@ -1700,7 +1788,7 @@ namespace std {
         template <typename K, typename F, typename... Args>
         bool emplace_or_visit(K&& key, F functor, Args&&... val) {
             hash_value hv = hashed_key(key);
-            auto b = snapshot_and_lock_two<private_impl::LOCKING_ACTIVE>(hv);
+            auto b = snapshot_and_write_lock_two<private_impl::LOCKING_ACTIVE>(hv);
             table_position pos = cuckoo_insert_loop(hv, b, key);
             if (pos.status == ok) {
                 add_to_bucket(pos.index, pos.slot, hv.partial, std::forward<K>(key),
@@ -1714,7 +1802,7 @@ namespace std {
         template <typename K, typename... Args>
         bool emplace(K&& key, Args&&... val) {
             hash_value hv = hashed_key(key);
-            auto b = snapshot_and_lock_two<private_impl::LOCKING_ACTIVE>(hv);
+            auto b = snapshot_and_write_lock_two<private_impl::LOCKING_ACTIVE>(hv);
             table_position pos = cuckoo_insert_loop(hv, b, key);
             if (pos.status == ok) {
                 add_to_bucket(pos.index, pos.slot, hv.partial,
@@ -1728,7 +1816,7 @@ namespace std {
         template <typename K, typename... Args>
         bool insert_or_assign(K&& key, Args&&... val)  {
             hash_value hv = hashed_key(key);
-            auto b = snapshot_and_lock_two<private_impl::LOCKING_ACTIVE>(hv);
+            auto b = snapshot_and_write_lock_two<private_impl::LOCKING_ACTIVE>(hv);
             table_position pos = cuckoo_insert_loop(hv, b, key);
             if (pos.status == ok) {
                 add_to_bucket(pos.index, pos.slot, hv.partial, std::forward<K>(key),
@@ -1748,7 +1836,7 @@ namespace std {
         template<typename K, typename... Args>
         size_type update(K&& key, Args&&... val) {
             const hash_value hv = hashed_key(key);
-            const auto guard = snapshot_and_lock_two<private_impl::LOCKING_ACTIVE>(hv);
+            const auto guard = snapshot_and_write_lock_two<private_impl::LOCKING_ACTIVE>(hv);
             const table_position pos = cuckoo_find(std::forward<K>(key), hv.partial, guard.first(), guard.second());
             if (pos.status == ok) {
                 buckets[pos.index].mapped(pos.slot) = std::forward<mapped_type>(std::forward<Args>(val)...);
@@ -1761,7 +1849,7 @@ namespace std {
         template<typename K>
         size_type erase(K&& key) {
             const hash_value hv = hashed_key(key);
-            const auto guard = snapshot_and_lock_two<private_impl::LOCKING_ACTIVE>(hv);
+            const auto guard = snapshot_and_write_lock_two<private_impl::LOCKING_ACTIVE>(hv);
             const table_position pos =
             cuckoo_find(std::forward<K>(key), hv.partial, guard.first(), guard.second());
             if (pos.status == ok) {
@@ -1775,7 +1863,7 @@ namespace std {
         template<typename K, typename F>
         size_type erase_and_visit(K&& key, F functor) {
             const hash_value hv = hashed_key(key);
-            const auto guard = snapshot_and_lock_two<private_impl::LOCKING_ACTIVE>(hv);
+            const auto guard = snapshot_and_write_lock_two<private_impl::LOCKING_ACTIVE>(hv);
             const table_position pos =
                     cuckoo_find(std::forward<K>(key), hv.partial, guard.first(), guard.second());
             if (pos.status == ok) {
@@ -1814,7 +1902,7 @@ namespace std {
         }
 
         void clear() noexcept {
-            auto unlocker = snapshot_and_lock_all<private_impl::LOCKING_ACTIVE>();
+            auto unlocker = snapshot_and_write_lock_all<private_impl::LOCKING_ACTIVE>();
             buckets.clear();
             auto& locks = get_current_locks();
             for (size_type i = 0; i < locks.size(); ++i) {
@@ -1827,7 +1915,7 @@ namespace std {
         using rebind_alloc =
         typename std::allocator_traits<allocator_type>::template rebind_alloc<U>;
 
-        using locks_t = std::vector<std::private_impl::spinlock, rebind_alloc<std::private_impl::spinlock>>;
+        using locks_t = std::vector<private_impl::versioned_synchronizer, rebind_alloc<private_impl::versioned_synchronizer>>;
         using all_locks_t = std::list<locks_t, rebind_alloc<locks_t>>;
 
         using hash_value = private_impl::hash_value;
@@ -1960,11 +2048,38 @@ namespace std {
             return bucket_index & (std::private_impl::MAX_NUM_LOCKS - 1);
         }
 
-        template <typename LOCK_TYPE>
-        class bucket_guard {
+        template<typename ReadOperation>
+        class two_buckets_read_guard {
         public:
-            bucket_guard() {}
-            bucket_guard(locks_t* locks, size_type index)
+            two_buckets_read_guard(locks_t* locks, size_type first_index, size_type second_index)
+                : locks(locks)
+                , first_index(first_index)
+                , second_index(second_index)
+            {
+            }
+
+            void run(ReadOperation operation) const {
+                std::private_impl::versioned_synchronizer::version_type first_version;
+                std::private_impl::versioned_synchronizer::version_type second_version;
+                do {
+                    first_version = (*locks)[first_index].read_lock();
+                    second_version = (*locks)[second_index].read_lock();
+                    operation(first_index, second_index);
+                } while (!(*locks)[first_index].try_read_unlock(first_version) ||
+                         !(*locks)[second_index].try_read_unlock(second_version));
+            }
+
+        private:
+            locks_t* locks;
+            size_type first_index;
+            size_type second_index;
+        };
+
+        template <typename LOCK_TYPE>
+        class bucket_write_guard {
+        public:
+            bucket_write_guard() {}
+            bucket_write_guard(locks_t* locks, size_type index)
                 : locks(locks, unlocker{index})
                 {
                 }
@@ -1973,7 +2088,7 @@ namespace std {
             struct unlocker {
                 size_type index;
                 void operator()(locks_t* p) const {
-                    (*p)[lock_index(index)].unlock(LOCK_TYPE());
+                    (*p)[lock_index(index)].write_unlock(LOCK_TYPE());
                 }
             };
 
@@ -1981,11 +2096,11 @@ namespace std {
         };
 
         template <typename LOCK_TYPE>
-        class two_buckets_guard {
+        class two_buckets_write_guard {
         public:
-            two_buckets_guard() {}
+            two_buckets_write_guard() {}
 
-            two_buckets_guard(locks_t* locks, size_type first, size_type second)
+            two_buckets_write_guard(locks_t* locks, size_type first, size_type second)
                 : locks(locks, two_buckets_unlocker{first, second}) {
             }
 
@@ -2012,9 +2127,9 @@ namespace std {
                 void operator()(locks_t *p) const {
                     const size_type l1 = lock_index(first);
                     const size_type l2 = lock_index(second);
-                    (*p)[l1].unlock(LOCK_TYPE());
+                    (*p)[l1].write_unlock(LOCK_TYPE());
                     if (l1 != l2) {
-                        (*p)[l2].unlock(LOCK_TYPE());
+                        (*p)[l2].write_unlock(LOCK_TYPE());
                     }
                 }
             };
@@ -2023,14 +2138,14 @@ namespace std {
         };
 
         template <typename LOCK_TYPE>
-        class all_buckets_guard {
+        class all_buckets_write_guard {
         public:
-            all_buckets_guard()
+            all_buckets_write_guard()
                     : all_locks(nullptr)
             {
             }
 
-            all_buckets_guard(all_locks_t* all_locks, typename all_locks_t::iterator first_locked)
+            all_buckets_write_guard(all_locks_t* all_locks, typename all_locks_t::iterator first_locked)
                 : all_locks(all_locks, unlocker(first_locked))
                 {
                 }
@@ -2064,8 +2179,8 @@ namespace std {
                     if (p != nullptr) {
                         for (auto it = first_locked; it != p->end(); ++it) {
                             locks_t& locks = *it;
-                            for (std::private_impl::spinlock& lock : locks) {
-                                lock.unlock(LOCK_TYPE());
+                            for (auto& lock : locks) {
+                                lock.write_unlock(LOCK_TYPE());
                             }
                         }
                     }
@@ -2087,7 +2202,7 @@ namespace std {
         inline void check_hashpower(const size_type old_hashpower, const size_type lock) const {
             if (hashpower() != old_hashpower) {
                 locks_t& locks = get_current_locks();
-                locks[lock].unlock(LOCK_TYPE());
+                locks[lock].write_unlock(LOCK_TYPE());
                 throw hashpower_changed();
             }
         }
@@ -2096,13 +2211,13 @@ namespace std {
         //
         // throws hashpower_changed if it changed after taking the lock.
         template <typename LOCK_TYPE>
-        inline bucket_guard<LOCK_TYPE> lock_one(const size_type hashpower,
-                                                const size_type index) const {
+        inline bucket_write_guard<LOCK_TYPE> write_lock_one(const size_type hashpower,
+                                                            const size_type index) const {
             const size_type l = lock_index(index);
             locks_t& locks = get_current_locks();
-            locks[l].lock(LOCK_TYPE());
+            locks[l].write_lock(LOCK_TYPE());
             check_hashpower<LOCK_TYPE>(hashpower, l);
-            return bucket_guard<LOCK_TYPE>(&locks, index);
+            return bucket_write_guard<LOCK_TYPE>(&locks, index);
         }
 
         // locks the two bucket indexes, always locking the earlier index first to
@@ -2110,8 +2225,8 @@ namespace std {
         //
         // throws hashpower_changed if it changed after taking the lock.
         template <typename LOCK_TYPE>
-        two_buckets_guard<LOCK_TYPE> lock_two(const size_type hashpower, const size_type first,
-                                              const size_type second) const {
+        two_buckets_write_guard<LOCK_TYPE> write_lock_two(const size_type hashpower, const size_type first,
+                                                          const size_type second) const {
             size_type l1 = lock_index(first);
             size_type l2 = lock_index(second);
             if (l2 < l1) {
@@ -2119,22 +2234,31 @@ namespace std {
             }
             locks_t& locks = get_current_locks();
 
-            locks[l1].lock(LOCK_TYPE());
+            locks[l1].write_lock(LOCK_TYPE());
             check_hashpower<LOCK_TYPE>(hashpower, l1);
             if (l2 != l1) {
-                locks[l2].lock(LOCK_TYPE());
+                locks[l2].write_lock(LOCK_TYPE());
             }
-            return two_buckets_guard<LOCK_TYPE>(&locks, first, second);
+            return two_buckets_write_guard<LOCK_TYPE>(&locks, first, second);
         }
 
-        // snapshot_and_lock_all takes all the locks, and returns a deleter object
+        template<typename ReadOperation>
+        two_buckets_read_guard<ReadOperation> read_lock_two(const size_type hashpower, const size_type first,
+                                                            const size_type second) const {
+            size_type l1 = lock_index(first);
+            size_type l2 = lock_index(second);
+            locks_t& locks = get_current_locks();
+            return two_buckets_read_guard<ReadOperation>(&locks, first, second);
+        }
+
+        // snapshot_and_write_lock_all takes all the locks, and returns a deleter object
         // that releases the locks upon destruction. Note that after taking all the
         // locks, it is okay to resize the buckets_ container, since no other threads
         // should be accessing the buckets.
         template <typename LOCK_TYPE>
-        all_buckets_guard<LOCK_TYPE> snapshot_and_lock_all() const {
+        all_buckets_write_guard<LOCK_TYPE> snapshot_and_write_lock_all() const {
             if (!LOCK_TYPE()) {
-                return all_buckets_guard<LOCK_TYPE>();
+                return all_buckets_write_guard<LOCK_TYPE>();
             }
 
             // all_locks_ should never decrease in size, so if it is non-empty now, it
@@ -2145,20 +2269,20 @@ namespace std {
             auto current_locks = first_locked;
             while (current_locks != all_locks.end()) {
                 locks_t& locks = *current_locks;
-                for (std::private_impl::spinlock& lock : locks) {
-                    lock.lock(LOCK_TYPE());
+                for (auto& lock : locks) {
+                    lock.write_lock(LOCK_TYPE());
                 }
                 ++current_locks;
             }
             // Once we have taken all the locks of the "current" container, nobody
             // else can do locking operations on the table.
-            return all_buckets_guard<LOCK_TYPE>(&all_locks, first_locked);
+            return all_buckets_write_guard<LOCK_TYPE>(&all_locks, first_locked);
         }
 
         template <typename LOCK_TYPE>
-        std::pair<two_buckets_guard<LOCK_TYPE>, bucket_guard<LOCK_TYPE>>
-            lock_three(const size_type hp, const size_type i1, const size_type i2,
-                       const size_type i3) const {
+        std::pair<two_buckets_write_guard<LOCK_TYPE>, bucket_write_guard<LOCK_TYPE>>
+            write_lock_three(const size_type hp, const size_type i1, const size_type i2,
+                             const size_type i3) const {
             std::array<size_type, 3> l{{lock_index(i1), lock_index(i2), lock_index(i3)}};
             // Lock in order.
             if (l[2] < l[1])
@@ -2168,37 +2292,53 @@ namespace std {
             if (l[1] < l[0])
                 std::swap(l[1], l[0]);
             locks_t& locks = get_current_locks();
-            locks[l[0]].lock(LOCK_TYPE());
+            locks[l[0]].write_lock(LOCK_TYPE());
             check_hashpower<LOCK_TYPE>(hp, l[0]);
             if (l[1] != l[0]) {
-                locks[l[1]].lock(LOCK_TYPE());
+                locks[l[1]].write_lock(LOCK_TYPE());
             }
             if (l[2] != l[1]) {
-                locks[l[2]].lock(LOCK_TYPE());
+                locks[l[2]].write_lock(LOCK_TYPE());
             }
-            return std::make_pair(two_buckets_guard<LOCK_TYPE>(&locks, i1, i2),
-                                  bucket_guard<LOCK_TYPE>((lock_index(i3) == lock_index(i1) ||
-                                                           lock_index(i3) == lock_index(i2))
-                                                          ? nullptr
-                                                          : &locks,
-                                                          i3));
+            return std::make_pair(two_buckets_write_guard<LOCK_TYPE>(&locks, i1, i2),
+                                  bucket_write_guard<LOCK_TYPE>((lock_index(i3) == lock_index(i1) ||
+                                                                 lock_index(i3) == lock_index(i2))
+                                                                ? nullptr
+                                                                : &locks,
+                                                                i3));
         }
 
-        // snapshot_and_lock_two loads locks the buckets associated with the given
+        // snapshot_and_write_lock_two loads locks the buckets associated with the given
         // hash value, making sure the hashpower doesn't change before the locks are
         // taken. Thus it ensures that the buckets and locks corresponding to the
         // hash value will stay correct as long as the locks are held. It returns
         // the bucket indices associated with the hash value and the current
         // hashpower.
         template <typename LOCK_TYPE>
-        two_buckets_guard<LOCK_TYPE> snapshot_and_lock_two(const hash_value& hashvalue) const {
+        two_buckets_write_guard<LOCK_TYPE> snapshot_and_write_lock_two(const hash_value& hashvalue) const {
             while (true) {
                 // Store the current hashpower we're using to compute the buckets
                 const size_type old_hashpower = hashpower();
                 const size_type first = index_hash(old_hashpower, hashvalue.hash);
                 const size_type second = alt_index(old_hashpower, hashvalue.partial, first);
                 try {
-                    return lock_two<LOCK_TYPE>(old_hashpower, first, second);
+                    return write_lock_two<LOCK_TYPE>(old_hashpower, first, second);
+                } catch (hashpower_changed &) {
+                    // The hashpower changed while taking the locks. Try again.
+                    continue;
+                }
+            }
+        }
+
+        template<typename ReadOperation>
+        two_buckets_read_guard<ReadOperation> snapshot_and_read_lock_two(const hash_value& hashvalue) const {
+            while (true) {
+                // Store the current hashpower we're using to compute the buckets
+                const size_type old_hashpower = hashpower();
+                const size_type first = index_hash(old_hashpower, hashvalue.hash);
+                const size_type second = alt_index(old_hashpower, hashvalue.partial, first);
+                try {
+                    return read_lock_two<ReadOperation>(old_hashpower, first, second);
                 } catch (hashpower_changed &) {
                     // The hashpower changed while taking the locks. Try again.
                     continue;
@@ -2208,7 +2348,7 @@ namespace std {
 
         template <typename K, typename LOCK_TYPE>
         table_position cuckoo_insert_loop(hash_value hashvalue,
-                                          two_buckets_guard<LOCK_TYPE>& guard,
+                                          two_buckets_write_guard<LOCK_TYPE>& guard,
                                           K& key) {
             table_position pos;
             while (true) {
@@ -2222,12 +2362,12 @@ namespace std {
                 case failure_table_full:
                     // Expand the table and try again, re-grabbing the locks
                     cuckoo_fast_double<LOCK_TYPE, automatic_resize>(old_hashpower);
-                    guard = snapshot_and_lock_two<LOCK_TYPE>(hashvalue);
+                    guard = snapshot_and_write_lock_two<LOCK_TYPE>(hashvalue);
                     break;
                 case failure_under_expansion:
                     // The table was under expansion while we were cuckooing. Re-grab the
                     // locks and try again.
-                    guard = snapshot_and_lock_two<LOCK_TYPE>(hashvalue);
+                    guard = snapshot_and_write_lock_two<LOCK_TYPE>(hashvalue);
                     break;
                 default:
                     assert(false);
@@ -2244,7 +2384,7 @@ namespace std {
         // If run_cuckoo returns ok (success), then `b` will be active, otherwise it
         // will not.
         template <typename LOCK_TYPE>
-        operation_status run_cuckoo(two_buckets_guard<LOCK_TYPE>& guard,
+        operation_status run_cuckoo(two_buckets_write_guard<LOCK_TYPE>& guard,
                                     size_type& insert_bucket,
                                     size_type& insert_slot) {
             // We must unlock the buckets here, so that cuckoopath_search and
@@ -2281,9 +2421,9 @@ namespace std {
                         insert_slot = path[0].slot;
                         assert(insert_bucket == guard.first() || insert_bucket == guard.second());
                         assert(LOCK_TYPE() == private_impl::LOCKING_INACTIVE() ||
-                               !get_current_locks()[lock_index(guard.first())].try_lock(LOCK_TYPE()));
+                               !get_current_locks()[lock_index(guard.first())].try_write_lock(LOCK_TYPE()));
                         assert(LOCK_TYPE() == private_impl::LOCKING_INACTIVE() ||
-                               !get_current_locks()[lock_index(guard.second())].try_lock(LOCK_TYPE()));
+                               !get_current_locks()[lock_index(guard.second())].try_write_lock(LOCK_TYPE()));
                         assert(!buckets[insert_bucket].occupied(insert_slot));
                         done = true;
                         break;
@@ -2318,7 +2458,7 @@ namespace std {
                 size_type starting_slot = x.pathcode % SLOTS_PER_BUCKET;
                 for (size_type i = 0; i < SLOTS_PER_BUCKET && !q.full(); ++i) {
                     size_type slot = (starting_slot + i) % SLOTS_PER_BUCKET;
-                    auto ob = lock_one<LOCK_TYPE>(hp, x.bucket);
+                    auto ob = write_lock_one<LOCK_TYPE>(hp, x.bucket);
                     bucket& b = buckets[x.bucket];
                     if (!b.occupied(slot)) {
                         // We can terminate the search here
@@ -2376,7 +2516,7 @@ namespace std {
                 first.bucket = i2;
             }
             {
-                const auto guard = lock_one<LOCK_TYPE>(hp, first.bucket);
+                const auto guard = write_lock_one<LOCK_TYPE>(hp, first.bucket);
                 const bucket& b = buckets[first.bucket];
                 if (!b.occupied(first.slot)) {
                     // We can terminate here
@@ -2393,7 +2533,7 @@ namespace std {
                 // We get the bucket that this slot is on by computing the alternate
                 // index of the previous bucket
                 cur.bucket = alt_index(hp, prev.hv.partial, prev.bucket);
-                const auto guard = lock_one<LOCK_TYPE>(hp, cur.bucket);
+                const auto guard = write_lock_one<LOCK_TYPE>(hp, cur.bucket);
                 const bucket& b = buckets[cur.bucket];
                 if (!b.occupied(cur.slot)) {
                     // We can terminate here
@@ -2446,9 +2586,9 @@ namespace std {
             }
 
             locks_t new_locks(std::min(size_type(std::private_impl::MAX_NUM_LOCKS), new_bucket_count),
-                              std::private_impl::spinlock(), get_allocator());
-            for (std::private_impl::spinlock& lock : new_locks) {
-                lock.lock(LOCK_TYPE());
+                              std::private_impl::versioned_synchronizer(), get_allocator());
+            for (auto& lock : new_locks) {
+                lock.write_lock(LOCK_TYPE());
             }
             assert(new_locks.size() > current_locks.size());
             std::copy(current_locks.begin(), current_locks.end(), new_locks.begin());
@@ -2466,7 +2606,7 @@ namespace std {
                 return cuckoo_expand_simple<LOCK_TYPE, AUTO_RESIZE>(current_hp + 1);
             }
             const size_type new_hp = current_hp + 1;
-            auto unlocker = snapshot_and_lock_all<LOCK_TYPE>();
+            auto unlocker = snapshot_and_write_lock_all<LOCK_TYPE>();
 
             auto st = check_resize_validity<AUTO_RESIZE>(current_hp, new_hp);
             if (st != ok) {
@@ -2580,7 +2720,7 @@ namespace std {
         // beyond the maximum hashpower, and we have an actual limit.
         template <typename LOCK_TYPE, typename AUTO_RESIZE>
         operation_status cuckoo_expand_simple(size_type new_hp) {
-            const auto unlocker = snapshot_and_lock_all<LOCK_TYPE>();
+            const auto unlocker = snapshot_and_write_lock_all<LOCK_TYPE>();
             const size_type hp = hashpower();
             auto st = check_resize_validity<AUTO_RESIZE>(hp, new_hp);
             if (st != ok) {
@@ -2630,7 +2770,7 @@ namespace std {
         // throws hashpower_changed if it changed during the move.
         template <typename LOCK_TYPE>
         bool cuckoopath_move(const size_type hp, private_impl::nodes& path,
-                             size_type depth, two_buckets_guard<LOCK_TYPE>& guard) {
+                             size_type depth, two_buckets_write_guard<LOCK_TYPE>& guard) {
             assert(!guard.is_active());
             if (depth == 0) {
                 // There is a chance that depth == 0, when try_add_to_bucket sees
@@ -2641,7 +2781,7 @@ namespace std {
                 // so we hold the locks and return true.
                 const size_type bucket = path[0].bucket;
                 assert(bucket == guard.first() || bucket == guard.second());
-                guard = lock_two<LOCK_TYPE>(hp, guard.first(), guard.second());
+                guard = write_lock_two<LOCK_TYPE>(hp, guard.first(), guard.second());
                 if (!buckets[bucket].occupied(path[0].slot)) {
                     return true;
                 } else {
@@ -2655,8 +2795,8 @@ namespace std {
                 private_impl::node& to = path[depth];
                 const size_type from_slot = from.slot;
                 const size_type to_slot = to.slot;
-                two_buckets_guard<LOCK_TYPE> twob;
-                bucket_guard<LOCK_TYPE> extrab;
+                two_buckets_write_guard<LOCK_TYPE> twob;
+                bucket_write_guard<LOCK_TYPE> extrab;
                 if (depth == 1) {
                     // Even though we are only swapping out of one of the original
                     // buckets, we have to lock both of them along with the slot we
@@ -2664,9 +2804,9 @@ namespace std {
                     // must be locked. We store tb inside the extrab container so it
                     // is unlocked at the end of the loop.
                     std::tie(twob, extrab) =
-                        lock_three<LOCK_TYPE>(hp, guard.first(), guard.second(), to.bucket);
+                        write_lock_three<LOCK_TYPE>(hp, guard.first(), guard.second(), to.bucket);
                 } else {
-                    twob = lock_two<LOCK_TYPE>(hp, from.bucket, to.bucket);
+                    twob = write_lock_two<LOCK_TYPE>(hp, from.bucket, to.bucket);
                 }
 
                 bucket& from_bucket = buckets[from.bucket];
@@ -2733,7 +2873,7 @@ namespace std {
 
         template <typename K, typename LOCK_TYPE>
         table_position cuckoo_insert(const hash_value hashvalue,
-                                     two_buckets_guard<LOCK_TYPE>& guard,
+                                     two_buckets_write_guard<LOCK_TYPE>& guard,
                                      K& key) {
             int res1, res2;
             bucket& b1 = buckets[guard.first()];
@@ -2764,9 +2904,9 @@ namespace std {
                 return table_position{0, 0, failure_under_expansion};
             } else if (st == ok) {
                 assert(LOCK_TYPE() == private_impl::LOCKING_INACTIVE() ||
-                       !get_current_locks()[lock_index(guard.first())].try_lock(LOCK_TYPE()));
+                       !get_current_locks()[lock_index(guard.first())].try_write_lock(LOCK_TYPE()));
                 assert(LOCK_TYPE() == private_impl::LOCKING_INACTIVE() ||
-                       !get_current_locks()[lock_index(guard.second())].try_lock(LOCK_TYPE()));
+                       !get_current_locks()[lock_index(guard.second())].try_write_lock(LOCK_TYPE()));
                 assert(!buckets[insert_bucket].occupied(insert_slot));
                 assert(insert_bucket == index_hash(hashpower(), hashvalue.hash) ||
                        insert_bucket == alt_index(hashpower(), hashvalue.partial,
