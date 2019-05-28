@@ -404,8 +404,7 @@ namespace std {
             versioned_synchronizer() = default;
 
             versioned_synchronizer(const versioned_synchronizer& other)
-                : writelock(other.writelock)
-                , version(other.version.load(std::memory_order_acquire))
+                : version(other.version.load(std::memory_order_acquire))
             {
             }
 
@@ -429,36 +428,41 @@ namespace std {
 
             template <typename LOCK_TYPE>
             void write_lock(LOCK_TYPE type) {
-                writelock.lock(type);
-                version.fetch_add(std::memory_order_release);
+                version_type old_lock_version;
+                do {
+                    do {
+                        old_lock_version = version.load(std::memory_order_acquire);
+                    } while (old_lock_version & 1);
+                } while (!version.compare_exchange_weak(old_lock_version, old_lock_version + 1,
+                                                        std::memory_order_acq_rel));
             }
 
             template <typename LOCK_TYPE>
             bool try_write_lock(LOCK_TYPE type) {
-                if (writelock.try_lock(type)) {
-                    version.fetch_add(std::memory_order_release);
-                    return true;
+                version_type old_lock_version = version.load(std::memory_order_acquire);
+                if (old_lock_version & 1) {
+                    return false;
                 }
-                return false;
+                return version.compare_exchange_weak(old_lock_version, old_lock_version + 1,
+                                                     std::memory_order_acq_rel);
             }
 
             template <typename LOCK_TYPE>
             void write_unlock(LOCK_TYPE type) {
                 version.fetch_add(std::memory_order_release);
-                writelock.unlock(type);
             }
 
             size_t& elem_counter() noexcept {
-                return writelock.elem_counter();
+                return counter;
             }
 
             size_t elem_counter() const noexcept {
-                return writelock.elem_counter();
+                return counter;
             }
 
         private:
-            spinlock writelock;
             std::atomic<version_type> version;
+            size_t counter;
         };
 
         /**
