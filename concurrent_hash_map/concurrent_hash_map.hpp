@@ -2069,20 +2069,22 @@ namespace std {
         public:
             two_buckets_read_guard(locks_t* locks, size_type first_index, size_type second_index)
                 : locks(locks)
-                , first_index(lock_index(first_index))
-                , second_index(lock_index(second_index))
+                , first_index(first_index)
+                , second_index(second_index)
             {
             }
 
             void run(ReadOperation operation) const {
                 std::private_impl::versioned_synchronizer::version_type first_version;
                 std::private_impl::versioned_synchronizer::version_type second_version;
+                auto l1 = lock_index(first_index);
+                auto l2 = lock_index(second_index);
                 do {
-                    first_version = (*locks)[first_index].read_lock();
-                    second_version = (*locks)[second_index].read_lock();
+                    first_version = (*locks)[l1].read_lock();
+                    second_version = (*locks)[l2].read_lock();
                     operation(first_index, second_index);
-                } while (!(*locks)[first_index].try_read_unlock(first_version) ||
-                         !(*locks)[second_index].try_read_unlock(second_version));
+                } while (!(*locks)[l1].try_read_unlock(first_version) ||
+                         !(*locks)[l2].try_read_unlock(second_version));
             }
 
         private:
@@ -2261,8 +2263,6 @@ namespace std {
         template<typename ReadOperation>
         two_buckets_read_guard<ReadOperation> read_lock_two(const size_type hashpower, const size_type first,
                                                             const size_type second) const {
-            size_type l1 = lock_index(first);
-            size_type l2 = lock_index(second);
             locks_t& locks = get_current_locks();
             return two_buckets_read_guard<ReadOperation>(&locks, first, second);
         }
