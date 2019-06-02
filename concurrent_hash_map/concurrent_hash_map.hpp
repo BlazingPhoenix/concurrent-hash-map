@@ -2057,8 +2057,8 @@ namespace std {
         public:
             two_buckets_read_guard(locks_t* locks, size_type first_index, size_type second_index)
                 : locks(locks)
-                , first_index(first_index)
-                , second_index(second_index)
+                , first_index(lock_index(first_index))
+                , second_index(lock_index(second_index))
             {
             }
 
