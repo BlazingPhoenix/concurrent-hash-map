@@ -401,20 +401,26 @@ namespace std {
         public:
             typedef size_t version_type;
 
-            versioned_synchronizer() = default;
+            versioned_synchronizer()
+                : counter(0)
+                , version(0)
+            {
+            }
 
             versioned_synchronizer(const versioned_synchronizer& other)
                 : version(other.version.load(std::memory_order_acquire))
+                , counter(other.counter)
             {
             }
 
             versioned_synchronizer& operator = (const versioned_synchronizer& other) {
                 version.store(other.version.load(std::memory_order_acquire),
                               std::memory_order_release);
+                counter = other.counter;
                 return *this;
             }
 
-            version_type read_lock() const {
+            version_type read_lock() const noexcept {
                 version_type result = version.load(std::memory_order_acquire);
                 while ((result & 1) == 1) {
                     result = version.load(std::memory_order_acquire);
@@ -422,12 +428,11 @@ namespace std {
                 return result;
             }
 
-            bool try_read_unlock(version_type version) const {
+            bool try_read_unlock(version_type version) const noexcept {
                 return this->version.load(std::memory_order_acquire) == version;
             }
 
-            template <typename LOCK_TYPE>
-            void write_lock(LOCK_TYPE type) {
+            void write_lock(LOCKING_ACTIVE) noexcept {
                 version_type old_lock_version;
                 do {
                     do {
@@ -436,9 +441,10 @@ namespace std {
                 } while (!version.compare_exchange_weak(old_lock_version, old_lock_version + 1,
                                                         std::memory_order_acq_rel));
             }
+            void write_lock(LOCKING_INACTIVE) noexcept {
+            }
 
-            template <typename LOCK_TYPE>
-            bool try_write_lock(LOCK_TYPE type) {
+            bool try_write_lock(LOCKING_ACTIVE) {
                 version_type old_lock_version = version.load(std::memory_order_acquire);
                 if (old_lock_version & 1) {
                     return false;
@@ -447,9 +453,15 @@ namespace std {
                                                      std::memory_order_acq_rel);
             }
 
-            template <typename LOCK_TYPE>
-            void write_unlock(LOCK_TYPE type) {
+            bool try_write_lock(LOCKING_INACTIVE) {
+                return true;
+            }
+
+            void write_unlock(LOCKING_ACTIVE) noexcept {
                 version.fetch_add(std::memory_order_release);
+            }
+
+            void write_unlock(LOCKING_INACTIVE) noexcept {
             }
 
             size_t& elem_counter() noexcept {
@@ -1648,7 +1660,7 @@ namespace std {
             , maximum_hash_power_holder(private_impl::NO_MAXIMUM_HASHPOWER)
             {
                 all_locks.emplace_back(std::min(n, size_type(std::private_impl::MAX_NUM_LOCKS)),
-                                   std::private_impl::versioned_synchronizer(), get_allocator());
+                                       std::private_impl::versioned_synchronizer(), get_allocator());
                 for (auto i = il.begin(); i != il.end(); ++i) {
                     emplace(i->first, i->second);
                 }
