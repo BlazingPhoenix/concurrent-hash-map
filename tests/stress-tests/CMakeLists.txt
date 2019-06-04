@@ -18,11 +18,18 @@ add_test(NAME stress_checked COMMAND stress_checked)
 find_package(Boost COMPONENTS system thread REQUIRED)
 include_directories(${Boost_INCLUDE_DIRS})
 include_directories(${Libcuckoo_INCLUDE_DIRS})
+include_directories(${Folly_INCLUDE_DIRS})
+link_directories(${Folly_LIB_DIRS})
 add_executable(benchmark benchmark.cpp)
 target_link_libraries(benchmark
         PRIVATE ${Boost_SYSTEM_LIBRARY}
         PRIVATE ${Boost_THREAD_LIBRARY}
         PRIVATE concurrent_hash_map
         PRIVATE pcg
+        PRIVATE folly
+        PRIVATE glog
+        PRIVATE dl
+        PRIVATE double-conversion
+        PRIVATE iberty
 )
 add_test(NAME benchmark COMMAND benchmark)

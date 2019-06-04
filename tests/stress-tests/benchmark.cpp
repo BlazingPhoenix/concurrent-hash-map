@@ -13,6 +13,7 @@
 
 #include <boost/thread/synchronized_value.hpp>
 #include <boost/iterator/indirect_iterator.hpp>
+#include <folly/concurrency/ConcurrentHashMap.h>
 
 #include <concurrent_hash_map/concurrent_hash_map.hpp>
 
@@ -603,6 +604,16 @@ int main(int argc, char **argv) {
                              m.insert(key, val);
                          }
                      }, "libcuckoo hash map", thread_count, 1.0 / write_faction_denominator);
+            folly::ConcurrentHashMap<unsigned, unsigned> m4;
+            run_test(m4, [](folly::ConcurrentHashMap<unsigned, unsigned>& m,
+                            unsigned key, unsigned val, bool need_write) {
+                         m.find(key);
+
+                         if (need_write) {
+                             m.emplace(key, val);
+                         }
+                     }, "folly ConcurrentHashMap", thread_count, 1.0 / write_faction_denominator);
+
         }
         std::cout << std::endl;
     }
