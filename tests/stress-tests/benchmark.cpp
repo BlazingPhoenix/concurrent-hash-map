@@ -517,9 +517,8 @@ private:
 constexpr int TEST_ITERATIONS = 1000 * 1000;
 
 template<typename M, typename Operation>
-void test_thread(M& m, Operation op, float write_ratio) {
-    std::random_device r;
-    std::default_random_engine e(r());
+void test_thread(M& m, Operation op, float write_ratio, unsigned seed) {
+    std::minstd_rand e(seed);
     std::uniform_int_distribution<unsigned> key_dist(1, std::numeric_limits<unsigned>::max());
     std::uniform_int_distribution<unsigned> value_dist(1, std::numeric_limits<unsigned>::max());
     std::uniform_int_distribution<unsigned> write_ratio_dist(1, 100);
@@ -542,8 +541,12 @@ void run_test(M& m, Operation op, const std::string& description,
     auto start_time = get_time_ms();
 
     std::vector<std::thread> threads;
-    for (int i = 0; i < thread_count; ++i) {
-        std::thread t([&m, op, write_ratio] { test_thread(m, op, write_ratio); });
+    static const unsigned magic_prime = 1000 * 1000 * 1000 + 7;
+    threads.reserve(thread_count);
+    for (unsigned i = 0; i < thread_count; ++i) {
+        std::thread t([&m, op, write_ratio, i] {
+                test_thread(m, op, write_ratio, i * magic_prime);
+            });
         threads.push_back(std::move(t));
     }
 
@@ -565,6 +568,7 @@ int main(int argc, char **argv) {
             std::cout << "Thread count: " << thread_count << std::endl;
 
             boost::synchronized_value<std::unordered_map<unsigned, unsigned>> m0;
+            m0->reserve(TEST_ITERATIONS);
             run_test(m0, [](boost::synchronized_value<std::unordered_map<unsigned, unsigned>>& m,
                             unsigned key, unsigned val, bool need_write) {
                          auto i = m->find(key);
@@ -585,7 +589,7 @@ int main(int argc, char **argv) {
                          }
                      }, "std concurrent hash map", thread_count, 1.0 / write_faction_denominator);
 
-            concurrent_unordered_map<unsigned, unsigned> m2(thread_count);
+            concurrent_unordered_map<unsigned, unsigned> m2(size_t(sqrt(TEST_ITERATIONS)));
             run_test(m2, [](concurrent_unordered_map<unsigned, unsigned>& m,
                             unsigned key, unsigned val, bool need_write) {
                          m.find(key);
@@ -594,7 +598,7 @@ int main(int argc, char **argv) {
                              m.emplace(key, val);
                          }
                      }, "Collision list based syncronized map", thread_count, 1.0 / write_faction_denominator);
-            cuckoohash_map<unsigned, unsigned> m3;
+            cuckoohash_map<unsigned, unsigned> m3(TEST_ITERATIONS);
             run_test(m3, [](cuckoohash_map<unsigned, unsigned>& m,
                             unsigned key, unsigned val, bool need_write) {
                          unsigned old;
@@ -604,7 +608,7 @@ int main(int argc, char **argv) {
                              m.insert(key, val);
                          }
                      }, "libcuckoo hash map", thread_count, 1.0 / write_faction_denominator);
-            folly::ConcurrentHashMap<unsigned, unsigned> m4;
+            folly::ConcurrentHashMap<unsigned, unsigned> m4(TEST_ITERATIONS);
             run_test(m4, [](folly::ConcurrentHashMap<unsigned, unsigned>& m,
                             unsigned key, unsigned val, bool need_write) {
                          m.find(key);
