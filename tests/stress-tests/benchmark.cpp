@@ -450,7 +450,7 @@ public:
         float result = std::numeric_limits<float>::min();
         for (size_type i = 0; i < buckets.size(); ++i) {
             std::lock_guard<Locable> guard(bucket_mutexes[i]);
-            result = max(result, buckets[i].max_load_factor());
+            result = std::max(result, buckets[i].max_load_factor());
         }
         return result;
     }
@@ -589,7 +589,8 @@ int main(int argc, char **argv) {
                          }
                      }, "std concurrent hash map", thread_count, 1.0 / write_faction_denominator);
 
-            concurrent_unordered_map<unsigned, unsigned> m2(size_t(sqrt(TEST_ITERATIONS)));
+            concurrent_unordered_map<unsigned, unsigned> m2(thread_count);
+            m2.reserve(TEST_ITERATIONS);
             run_test(m2, [](concurrent_unordered_map<unsigned, unsigned>& m,
                             unsigned key, unsigned val, bool need_write) {
                          m.find(key);
