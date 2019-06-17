@@ -1483,20 +1483,14 @@ namespace std {
         template <typename F>
         bool visit(const key_type& key, F functor) const {
             const hash_value hashvalue = hashed_key(key);
-            bool result = false;
-            auto visitor = [this, &result, &key, &functor, &hashvalue] (size_type first_index,
-                                                                        size_type second_index) {
-                const table_position pos = cuckoo_find(key, hashvalue.partial,
-                                                       first_index, second_index);
-                if (pos.status == ok) {
-                    functor(buckets[pos.index].mapped(pos.slot));
-                    result = true;
-                }
-            };
-
-            const auto guard = snapshot_and_read_lock_two<decltype(visitor)>(hashvalue);
-            guard.run(visitor);
-            return result;
+            const auto guard = snapshot_and_write_lock_two<private_impl::LOCKING_ACTIVE>(hashvalue);
+            const table_position pos = cuckoo_find(key, hashvalue.partial,
+                                                   guard.first(), guard.second());
+            if (pos.status == ok) {
+                functor(buckets[pos.index].mapped(pos.slot));
+                return true;
+            }
+            return false;
         }
 
         template<typename F>
