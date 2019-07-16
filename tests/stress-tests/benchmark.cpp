@@ -609,8 +609,14 @@ int main(int argc, char **argv) {
                              m.insert(key, val);
                          }
                      }, "libcuckoo hash map", thread_count, 1.0 / write_faction_denominator);
-            folly::ConcurrentHashMap<unsigned, unsigned> m4(TEST_ITERATIONS);
-            run_test(m4, [](folly::ConcurrentHashMap<unsigned, unsigned>& m,
+            folly::ConcurrentHashMap<unsigned, unsigned,
+                                     std::hash<unsigned>,
+                                     std::equal_to<unsigned>,
+                                     std::allocator<uint8_t>, 16> m4(TEST_ITERATIONS);
+            run_test(m4, [](folly::ConcurrentHashMap<unsigned, unsigned,
+                            std::hash<unsigned>,
+                            std::equal_to<unsigned>,
+                            std::allocator<uint8_t>, 16>& m,
                             unsigned key, unsigned val, bool need_write) {
                          m.find(key);
 
