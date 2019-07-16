@@ -13,9 +13,12 @@ add_executable(unit_tests
         unit_test_util.hpp
 )
 
+find_package(Boost COMPONENTS system REQUIRED)
+
 target_link_libraries(unit_tests
   PRIVATE concurrent_hash_map
   PRIVATE catch
+  PRIVATE ${Boost_SYSTEM_LIBRARY}
 )
 
 add_test(NAME unit_tests COMMAND unit_tests)

@@ -3,6 +3,7 @@ add_library(concurrent_hash_map INTERFACE)
 target_include_directories(concurrent_hash_map INTERFACE
         $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}>
         $<INSTALL_INTERFACE:include>
+        ${Boost_SYNC_INCLUDE_DIRS}
         )
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)

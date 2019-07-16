@@ -13,7 +13,9 @@
 #include <thread>
 #include <list>
 #include <vector>
+#include <type_traits>
 #include <experimental/optional>
+#include <boost/sync/mutexes.hpp>
 
 class unit_test_internals_view;
 
@@ -359,19 +361,18 @@ namespace std {
             }
 
             versioned_synchronizer(const versioned_synchronizer& other)
-                : version(other.version.load(std::memory_order_acquire))
+                : version(0)
                 , counter(other.counter)
             {
             }
 
             versioned_synchronizer& operator = (const versioned_synchronizer& other) {
-                version.store(other.version.load(std::memory_order_acquire),
-                              std::memory_order_release);
+                version.store(0, std::memory_order_release);
                 counter = other.counter;
                 return *this;
             }
 
-            version_type read_lock() const noexcept {
+            version_type read_lock() noexcept {
                 version_type result = version.load(std::memory_order_acquire);
                 while ((result & 1) == 1) {
                     result = version.load(std::memory_order_acquire);
@@ -379,7 +380,7 @@ namespace std {
                 return result;
             }
 
-            bool try_read_unlock(version_type version) const noexcept {
+            bool try_read_unlock(version_type version) noexcept {
                 return this->version.load(std::memory_order_acquire) == version;
             }
 
@@ -427,7 +428,62 @@ namespace std {
             std::atomic<version_type> version;
             size_t counter;
         };
+        
+        class alignas(64) shared_mutex_adapter {
+        public:
+            typedef size_t version_type;
+            
+            shared_mutex_adapter()
+                : counter(0)
+            {
+            }
+            
+            shared_mutex_adapter(const shared_mutex_adapter& other)
+                : counter(other.counter)
+            {
+            }
+            
+            shared_mutex_adapter& operator = (const shared_mutex_adapter& other) {
+                counter = other.counter;
+            }
+            version_type read_lock() noexcept {
+                mutex.lock_shared();
+            }
+            bool try_read_unlock(version_type version) noexcept {
+                mutex.unlock_shared();
+                return true;
+            }
+            void write_lock(LOCKING_ACTIVE) noexcept {
+                mutex.lock();
+            }
+            void write_lock(LOCKING_INACTIVE) noexcept {
+            }
+            bool try_write_lock(LOCKING_ACTIVE) {
+                return mutex.try_lock();
+            }
+            bool try_write_lock(LOCKING_INACTIVE) {
+                return true;
+            }
+            void write_unlock(LOCKING_ACTIVE) noexcept {
+                mutex.unlock();
+            }
+            void write_unlock(LOCKING_INACTIVE) noexcept {
+            }
+            
+            size_t& elem_counter() noexcept {
+                return counter;
+            }
 
+            size_t elem_counter() const noexcept {
+                return counter;
+            }
+
+
+        private:
+            boost::sync::shared_spin_mutex mutex;
+            size_t counter;
+        };
+        
         struct hash_value {
             size_type hash;
             partial_t partial;
@@ -1323,8 +1379,10 @@ namespace std {
             , minimum_load_factor_holder(private_impl::DEFAULT_MINIMUM_LOAD_FACTOR)
             , maximum_hash_power_holder(private_impl::NO_MAXIMUM_HASHPOWER)
             {
-                all_locks.emplace_back(std::min(bucket_count(), size_type(std::private_impl::MAX_NUM_LOCKS)),
-                                       std::private_impl::versioned_synchronizer(), allocator);
+
+                locks_t initial_locks(std::min(bucket_count(), size_type(std::private_impl::MAX_NUM_LOCKS)),
+                                      allocator);
+                all_locks.emplace_back(std::move(initial_locks));
             }
         template <typename InputIterator>
         concurrent_unordered_map(InputIterator first, InputIterator last,
@@ -1340,8 +1398,8 @@ namespace std {
             , minimum_load_factor_holder(private_impl::DEFAULT_MINIMUM_LOAD_FACTOR)
             , maximum_hash_power_holder(private_impl::NO_MAXIMUM_HASHPOWER)
             {
-                all_locks.emplace_back(std::min(n, size_type(std::private_impl::MAX_NUM_LOCKS)),
-                                       std::private_impl::versioned_synchronizer(), get_allocator());
+                locks_t initial_locks(std::min(n, size_type(std::private_impl::MAX_NUM_LOCKS)), get_allocator());
+                all_locks.emplace_back(std::move(initial_locks));
                 for (auto i = first; i != last; ++i) {
                     emplace(i->first, i->second);
                 }
@@ -1387,8 +1445,7 @@ namespace std {
             , minimum_load_factor_holder(private_impl::DEFAULT_MINIMUM_LOAD_FACTOR)
             , maximum_hash_power_holder(private_impl::NO_MAXIMUM_HASHPOWER)
             {
-                all_locks.emplace_back(std::min(n, size_type(std::private_impl::MAX_NUM_LOCKS)),
-                                       std::private_impl::versioned_synchronizer(), get_allocator());
+                all_locks.emplace_back(std::min(n, size_type(std::private_impl::MAX_NUM_LOCKS)), get_allocator());
                 for (auto i = il.begin(); i != il.end(); ++i) {
                     emplace(i->first, i->second);
                 }
@@ -1653,7 +1710,10 @@ namespace std {
         using rebind_alloc =
         typename std::allocator_traits<allocator_type>::template rebind_alloc<U>;
 
-        using locks_t = std::vector<private_impl::versioned_synchronizer, rebind_alloc<private_impl::versioned_synchronizer>>;
+        using lock_t = typename std::conditional<std::is_pod<Value>::value,
+                                                 private_impl::versioned_synchronizer,
+                                                 private_impl::shared_mutex_adapter>::type;
+        using locks_t = std::vector<lock_t, rebind_alloc<lock_t>>;
         using all_locks_t = std::list<locks_t, rebind_alloc<locks_t>>;
 
         using hash_value = private_impl::hash_value;
@@ -1801,6 +1861,9 @@ namespace std {
                 std::private_impl::versioned_synchronizer::version_type second_version;
                 auto l1 = lock_index(first_index);
                 auto l2 = lock_index(second_index);
+                if (l1 > l2) {
+                    std::swap(l1, l2);
+                }
                 do {
                     first_version = (*locks)[l1].read_lock();
                     second_version = (*locks)[l2].read_lock();
@@ -1973,6 +2036,8 @@ namespace std {
                 std::swap(l1, l2);
             }
             locks_t& locks = get_current_locks();
+            assert(l1 < locks.size());
+            assert(l2 < locks.size());
 
             locks[l1].write_lock(LOCK_TYPE());
             check_hashpower<LOCK_TYPE>(hashpower, l1);
@@ -2323,13 +2388,13 @@ namespace std {
                 return;
             }
 
-            locks_t new_locks(std::min(size_type(std::private_impl::MAX_NUM_LOCKS), new_bucket_count),
-                              std::private_impl::versioned_synchronizer(), get_allocator());
+            locks_t new_locks(std::min(size_type(std::private_impl::MAX_NUM_LOCKS),
+                                       new_bucket_count), get_allocator());
+            assert(new_locks.size() > current_locks.size());
+            std::copy(current_locks.begin(), current_locks.end(), new_locks.begin());
             for (auto& lock : new_locks) {
                 lock.write_lock(LOCK_TYPE());
             }
-            assert(new_locks.size() > current_locks.size());
-            std::copy(current_locks.begin(), current_locks.end(), new_locks.begin());
             all_locks.emplace_back(std::move(new_locks));
         }
 
@@ -2458,7 +2523,7 @@ namespace std {
         // beyond the maximum hashpower, and we have an actual limit.
         template <typename LOCK_TYPE, typename AUTO_RESIZE>
         operation_status cuckoo_expand_simple(size_type new_hp) {
-            const auto unlocker = snapshot_and_write_lock_all<LOCK_TYPE>();
+            auto unlocker = snapshot_and_write_lock_all<LOCK_TYPE>();
             const size_type hp = hashpower();
             auto st = check_resize_validity<AUTO_RESIZE>(hp, new_hp);
             if (st != ok) {
@@ -2493,8 +2558,9 @@ namespace std {
             // other threads may still be looking at our lock memory. Regardless, we
             // shouldn't need to swap the memory, since new_map is using the same
             // allocator as we are.
+            maybe_resize_locks<LOCK_TYPE>(new_map.bucket_count());
             buckets.swap(new_map.buckets);
-            all_locks.swap(new_map.all_locks);
+
             return ok;
         }
 

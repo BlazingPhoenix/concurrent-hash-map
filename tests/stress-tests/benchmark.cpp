@@ -562,6 +562,8 @@ void run_test(M& m, Operation op, const std::string& description,
 int main(int argc, char **argv) {
     srand(13213);
 
+    std::cout << "Int key, Int value" << std::endl;
+    
     for (unsigned write_faction_denominator : { 1, 2, 5, 10, 20 }) {
         std::cout << "Write fraction: 1/" << write_faction_denominator << std::endl;
         for (unsigned thread_count : { 1, 2, 4, 8, 16, 32, 64 }) {
@@ -622,6 +624,89 @@ int main(int argc, char **argv) {
 
                          if (need_write) {
                              m.emplace(key, val);
+                         }
+                     }, "folly ConcurrentHashMap", thread_count, 1.0 / write_faction_denominator);
+
+        }
+        std::cout << std::endl;
+    }
+
+    std::cout << std::endl;
+    std::cout << "string key, string value" << std::endl;
+    for (unsigned write_faction_denominator : { 1, 2, 5, 10, 20 }) {
+        std::cout << "Write fraction: 1/" << write_faction_denominator << std::endl;
+        for (unsigned thread_count : { 1, 2, 4, 8, 16, 32, 64 }) {
+            std::cout << "Thread count: " << thread_count << std::endl;
+
+            boost::synchronized_value<std::unordered_map<std::string, std::string>> m0;
+            m0->reserve(TEST_ITERATIONS);
+            run_test(m0, [](boost::synchronized_value<std::unordered_map<std::string, std::string>>& m,
+                            unsigned key, unsigned val, bool need_write) {
+                         auto str_key = std::to_string(key);
+                         auto str_val = std::to_string(val);
+                         auto i = m->find(str_key);
+
+                         if (need_write) {
+                             m->emplace(str_key, str_val);
+                         }
+                     }, "Default syncronized map", thread_count, 1.0 / write_faction_denominator);
+
+            std::concurrent_unordered_map<std::string, std::string> m1(TEST_ITERATIONS);
+            run_test(m1, [](std::concurrent_unordered_map<std::string, std::string>& m,
+                            unsigned key, unsigned val, bool need_write) {
+                         auto str_key = std::to_string(key);
+                         auto str_val = std::to_string(val);
+
+                         std::string old;
+                         m.find(str_key, old);
+
+                         if (need_write) {
+                             m.emplace(str_key, str_val);
+                         }
+                     }, "std concurrent hash map", thread_count, 1.0 / write_faction_denominator);
+
+            concurrent_unordered_map<std::string, std::string> m2(thread_count);
+            m2.reserve(TEST_ITERATIONS);
+            run_test(m2, [](concurrent_unordered_map<std::string, std::string>& m,
+                            unsigned key, unsigned val, bool need_write) {
+                         std::string str_key = std::to_string(key);
+                         std::string str_val = std::to_string(val);
+
+                         m.find(str_key);
+
+                         if (need_write) {
+                             m.emplace(str_key, str_val);
+                         }
+                     }, "Collision list based syncronized map", thread_count, 1.0 / write_faction_denominator);
+            cuckoohash_map<std::string, std::string> m3(TEST_ITERATIONS);
+            run_test(m3, [](cuckoohash_map<std::string, std::string>& m,
+                            unsigned key, unsigned val, bool need_write) {
+                         auto str_key = std::to_string(key);
+                         auto str_val = std::to_string(val);
+
+                         std::string old;
+                         m.find(str_key, old);
+
+                         if (need_write) {
+                             m.insert(str_key, str_val);
+                         }
+                     }, "libcuckoo hash map", thread_count, 1.0 / write_faction_denominator);
+            folly::ConcurrentHashMap<std::string, std::string,
+                                     std::hash<std::string>,
+                                     std::equal_to<std::string>,
+                                     std::allocator<uint8_t>, 16> m4(TEST_ITERATIONS);
+            run_test(m4, [](folly::ConcurrentHashMap<std::string, std::string,
+                            std::hash<std::string>,
+                            std::equal_to<std::string>,
+                            std::allocator<uint8_t>, 16>& m,
+                            unsigned key, unsigned val, bool need_write) {
+                         auto str_key = std::to_string(key);
+                         auto str_val = std::to_string(val);
+
+                         m.find(str_key);
+
+                         if (need_write) {
+                             m.emplace(str_key, str_val);
                          }
                      }, "folly ConcurrentHashMap", thread_count, 1.0 / write_faction_denominator);
 
