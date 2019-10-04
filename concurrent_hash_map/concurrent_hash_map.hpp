@@ -1554,7 +1554,7 @@ namespace std {
         void visit_all(F functor) {
             locks_t& locks = get_current_locks();
             for (auto i = 0; i < locks.size(); ++i) {
-                bucket_write_guard guard(&locks, i);
+                bucket_write_guard<private_impl::LOCKING_ACTIVE> guard(&locks, i);
                 const auto& bucket = buckets[i];
 
                 for (size_type j = 0; j < SLOTS_PER_BUCKET; ++j) {
@@ -1569,7 +1569,7 @@ namespace std {
         void visit_all(F functor) const {
             locks_t& locks = get_current_locks();
             for (auto i = 0; i < locks.size(); ++i) {
-                bucket_write_guard guard(&locks, i);
+                bucket_write_guard<private_impl::LOCKING_ACTIVE> guard(&locks, i);
                 const auto& bucket = buckets[i];
 
                 for (size_type j = 0; j < SLOTS_PER_BUCKET; ++j) {

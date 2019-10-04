@@ -72,10 +72,7 @@ int main() {
         t = thread([&users, &b]() {
             while (--b > 0) {
                 auto [user_name, data] = get_request();
-                auto u = users.find(user_name);
-                if (!u) continue;
-
-                process_user(*u, data);
+                users.visit(user_name, [&data](const shared_ptr<user_t> user) { process_user(user, data); });
             }
         });
     }
